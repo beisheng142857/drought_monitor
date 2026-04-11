@@ -60,11 +60,12 @@ model_params = {
     },
     "convlstm": {
         "batch_gen": {
-            "input_dim": [0, 2, 3, 4, 7, 10, 11, 12, 13],
-            "output_dim": 10,
-            "window_in_len": 10,
-            "window_out_len": 5,
-            "batch_size": 8,
+            # 假设你拼成张量时的顺序是: 0:NDVI, 1:NDWI, 2:VV, 3:VH
+            "input_dim": [0, 1, 2, 3],  
+            "output_dim": 1,         # 输出1张分类图
+            "window_in_len": 5,      # 5个月的输入时间步
+            "window_out_len": 1,     # (不再用于Decoder，仅作为占位符)
+            "batch_size": 16,        # 128x128可以在Colab上使用较大的batch_size
             "shuffle": True,
             "stride": 1
         },
@@ -78,24 +79,18 @@ model_params = {
             "early_stop_tolerance": 4
         },
         "core": {
-            "input_size": (61, 121),
-            "window_in": 10,  # should be same with batch_gen["window_in_len"]
-            "window_out": 5,  # should be same with batch_gen["window_out_len"]
-            "num_layers": 1,
+            "input_size": (128, 128),  # ★ 直接匹配你的 100m 分辨率切片图块大小
+            "window_in": 5,            
+            "num_layers": 2,           # 建议增加为2层以提取更复杂的时空特征
             "encoder_params": {
-                "input_dim": 9,
-                "hidden_dims": [1],
-                "kernel_size": [3],
-                "bias": False,
-                "peephole_con": False
-            },
-            "decoder_params": {
-                "input_dim": 1,
-                "hidden_dims": [1],
-                "kernel_size": [3],
-                "bias": False,
-                "peephole_con": False
+                "input_dim": 4,        # ★ 4个输入通道 (NDVI, NDWI, VV, VH)
+                "hidden_dims": [64, 64], # LSTM隐藏状态通道数，最后一层决定输出前的特征维度
+                "kernel_size": [3, 3],
+                "bias": True,
+                "peephole_con": False,
+                "num_classes": 4       # ★ 新增：输出4个干旱等级（无，轻，中，重）
             }
+            # 删除了 decoder_params，不再需要
         },
     },
     "u_net": {
