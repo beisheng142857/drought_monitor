@@ -3,7 +3,7 @@ import os
 import sys
 from torch.utils.data import TensorDataset, DataLoader, random_split
 
-code_dir = '/content/drive/MyDrive/GEE_Drought_Project/spatio-temporal-weather-forecasting'
+code_dir = '/content/drive/MyDrive/zyk_drought_monitor'
 # 将代码目录加入系统的环境变量中，这样 Python 就能找到 models 文件夹了
 if code_dir not in sys.path:
     sys.path.append(code_dir)
@@ -21,10 +21,35 @@ from configs.config import model_params
 # 1. 加载我们准备好的张量数据
 # ==========================================
 base_dir = '/content/drive/MyDrive/GEE_Drought_Project' # 替换为你的真实路径
-X = torch.load(os.path.join(base_dir, 'dataset_X.pt'))
-Y = torch.load(os.path.join(base_dir, 'dataset_Y.pt'))
+print("正在加载并合并多份历史数据...")
 
-print(f"加载成功！X 形状: {X.shape}, Y 形状: {Y.shape}")
+# 2021年
+X_1 = torch.load(os.path.join(base_dir, 'dataset_X_2021.pt')) 
+Y_1 = torch.load(os.path.join(base_dir, 'dataset_Y_2021.pt'))
+
+# 2022年
+X_2 = torch.load(os.path.join(base_dir, 'dataset_X_2022.pt')) 
+Y_2 = torch.load(os.path.join(base_dir, 'dataset_Y_2022.pt'))
+
+# 2023年
+X_3 = torch.load(os.path.join(base_dir, 'dataset_X_2023.pt')) 
+Y_3 = torch.load(os.path.join(base_dir, 'dataset_Y_2023.pt'))
+
+# 2024年
+X_4 = torch.load(os.path.join(base_dir, 'dataset_X_2024.pt')) 
+Y_4 = torch.load(os.path.join(base_dir, 'dataset_Y_2024.pt'))
+
+# # 2025年
+# X_5 = torch.load(os.path.join(base_dir, 'dataset_X_2025.pt')) 
+# Y_5 = torch.load(os.path.join(base_dir, 'dataset_Y_2025.pt'))
+
+# 3. 核心魔法：使用 torch.cat 将它们在第 0 维（Batch 也就是样本数量维度）无缝拼接！
+X = torch.cat([X_1, X_2, X_3], dim=0)
+Y = torch.cat([Y_1, Y_2, Y_3], dim=0)
+
+print(f"数据合并成功")
+print(f"最终喂给模型的 X 形状: {X.shape}")
+print(f"最终喂给模型的 Y 形状: {Y.shape}")
 
 # 打包为 Dataset 并划分训练集/验证集 (8:2)
 dataset = TensorDataset(X, Y)
@@ -91,8 +116,10 @@ trainer = Trainer(
 # 4. 开始训练干旱监测模型
 # ==========================================
 print("开始模型训练...")
-train_loss, val_loss = trainer.train(model=model, batch_generator=batch_generator)
+losses, best_train, best_val = trainer.train(model=model, batch_generator=batch_generator)
+train_loss = losses[0]
+val_loss = losses[1]
 
 # 保存训练好的模型权重
-torch.save(model.state_dict(), os.path.join(base_dir, 'drought_convlstm_best.pth'))
+torch.save(model.state_dict(), os.path.join(base_dir, 'drought_convlstm_best_2021_2024.pth'))
 print("训练完成，模型权重已保存！")
