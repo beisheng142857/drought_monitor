@@ -20,7 +20,7 @@ from configs.config import model_params
 # ==========================================
 # 1. 加载我们准备好的张量数据
 # ==========================================
-base_dir = '/content/drive/MyDrive/GEE_Drought_Project' # 替换为你的真实路径
+base_dir = '/content/drive/MyDrive/zyk_drought_monitor/data' 
 print("正在加载并合并多份历史数据...")
 
 # 2021年

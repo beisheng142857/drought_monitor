@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import torch.nn.functional as F
+from models.drought.attention import Attention  # 根据你的目录结构修改导入路径
 
 class ConvLSTM(nn.Module):
     #移除了 decoder_params 和 window_out，因为我们只需要对最后时刻输出一张分类图
@@ -14,6 +16,12 @@ class ConvLSTM(nn.Module):
         self.window_in = window_in
         self.num_layers = num_layers
         self.encoder_params = encoder_params
+
+        # 【新增】初始化注意力机制模块
+        self.input_attn = Attention(input_dim=input_attn_params["input_dim"],
+                                    hidden_dim=input_attn_params["hidden_dim"],
+                                    attn_channel=input_attn_params["attn_channel"],
+                                    kernel_size=input_attn_params["kernel_size"])
 
         # 定义 encoder
         self.encoder = self.__define_block(encoder_params)
@@ -34,6 +42,24 @@ class ConvLSTM(nn.Module):
 
         self.hidden = None
         self.is_trainable = True
+    
+    def __forward_input_attn(self, x, hidden, time_step):
+        d_dim = x.shape[2] # 获取干旱监测特征通道数
+
+        alpha_list = []
+        for k in range(d_dim):
+            x_k = x[:, :, k].clone()
+            alpha = self.input_attn(x_k, hidden)
+            alpha_list.append(alpha)
+
+        # 拼接并在特征维度上进行 softmax 归一化
+        alpha_tensor = torch.cat(alpha_list, dim=1)
+        alpha_tensor = F.softmax(alpha_tensor, dim=1)
+
+        # 将注意力权重乘回原特征
+        x[:, time_step] *= alpha_tensor
+
+        return x, alpha_tensor
 
     def init_hidden(self, batch_size):
         init_states = []
@@ -92,7 +118,15 @@ class ConvLSTM(nn.Module):
         for layer_idx in range(self.num_layers):
             h, c = hidden_state[layer_idx]
             output_inner = []
+            alphas = []  # 【新增】用于记录注意力权重，方便后续在干旱项目中分析可视化
+            
             for t in range(seq_len):
+                # 【新增】如果是编码器的第一层，先利用隐藏状态对输入进行注意力加权
+                if block_name == 'encoder' and layer_idx == 0:
+                    cur_layer_input, alpha = self.__forward_input_attn(cur_layer_input, hidden=(h, c), time_step=t)
+                    alphas.append(alpha)
+                
+                # 原有逻辑：送入 LSTM 单元
                 h, c = block[layer_idx](input_tensor=cur_layer_input[:, t, :, :, :],
                                         cur_state=[h, c])
                 output_inner.append(h)

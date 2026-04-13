@@ -90,7 +90,11 @@ model_params = {
                 "peephole_con": False,
                 "num_classes": 4       # ★ 新增：输出4个干旱等级（无，轻，中，重）
             }
-            # 删除了 decoder_params，不再需要
+            "input_attn_params": {
+                "input_dim": 1,        # 需与数据特征维度一致
+                "hidden_dim": 64,      # 建议与 Encoder 第一层 hidden_dim 一致
+                "attn_channel": 16,    # 注意力中间卷积通道数
+                "kernel_size": 3       # 卷积核大小
         },
     },
     "u_net": {
