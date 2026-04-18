@@ -14,7 +14,7 @@ def mask_s2_clouds(image):
     mask = qa.bitwiseAnd(1 << 10).eq(0).And(qa.bitwiseAnd(1 << 11).eq(0))
     return image.updateMask(mask).divide(10000)
 
-target_years = list(range(2015, 2021))
+target_years = list(range(2020, 2026))
 target_months = [4]
 
 print(f"📡 正在向 Google 云端提交任务，请通过下方的状态监控查看进度...\n")

@@ -111,20 +111,21 @@ def process_tiffs_to_tensor(tiff_paths, patch_size=128, stride=128, nodata_thres
 
 # 记得保留你刚才修改好的真实云盘路径
 base_dir = '/content/drive/MyDrive/GEE_Drought_Project'
-output_dir = os.path.join(base_dir, 'data_proc')
+fin_dir = '/content/drive/MyDrive/drought_monitor'
+output_dir = os.path.join(fin_dir, 'data_proc')
 os.makedirs(output_dir, exist_ok=True)
 
 tiff_files = [
-    os.path.join(base_dir, 'Fused_100m_2023_05.tif'),
-    os.path.join(base_dir, 'Fused_100m_2023_06.tif'),
-    os.path.join(base_dir, 'Fused_100m_2023_07.tif'),
-    os.path.join(base_dir, 'Fused_100m_2023_08.tif'),
-    os.path.join(base_dir, 'Fused_100m_2023_09.tif')
+    os.path.join(base_dir, 'Fused_100m_2025_05.tif'),
+    os.path.join(base_dir, 'Fused_100m_2025_06.tif'),
+    os.path.join(base_dir, 'Fused_100m_2025_07.tif'),
+    os.path.join(base_dir, 'Fused_100m_2025_08.tif'),
+    os.path.join(base_dir, 'Fused_100m_2025_09.tif')
 ]
 
 X_tensor = process_tiffs_to_tensor(tiff_files, patch_size=128, stride=128, nodata_threshold=0.1, normalize_channels=False)
 
-save_path = os.path.join(output_dir, 'dataset_X_2023.pt')
+save_path = os.path.join(output_dir, 'dataset_X_2025.pt')
 torch.save(X_tensor, save_path)
 
 print(f"张量已成功保存至云盘: {save_path}")
