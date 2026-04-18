@@ -277,3 +277,20 @@
 - 同时说明：上级 `code` 文件夹已经移出 `zyk_drought_monitor`，因此后续 Git 操作只围绕 `zyk_drought_monitor` 本身进行。
 - 已按新要求调整：允许上传结果文件，包括 `drought_outputs/**` 与 `results/model_compare/**`。
 - 建议后续采用“在 `zyk_drought_monitor` 内单独初始化/维护 Git 仓库”的方式，避免再受上级目录历史污染。
+
+### 2026-04-18（独立仓库首次提交与推送被拒）
+- 用户已在 `zyk_drought_monitor` 内完成一次独立初始化提交，日志显示为 `root-commit`，说明这是该目录新仓库的第一个本地提交。
+- 当前 `git push origin master` 被拒绝为 `fetch first`，原因是远端 GitHub 仓库已存在提交历史，而本地是全新历史，二者互不相干。
+- 这种场景下若确认要用本地仓库内容覆盖远端，应使用 `git push origin master --force`；若想保留远端历史，则需要先拉取并合并，但通常不适用于“重建为独立仓库”的情形。
+
+### 2026-04-18（是否保留旧仓库历史的决策）
+- 用户担心远端旧仓库可能还有用，不确定是否应直接覆盖。
+- 建议采用保守策略：先把当前本地内容推到一个新分支或新仓库做备份，再检查远端旧仓库内容是否需要迁移。
+- 推荐顺序：
+  1) `git push origin master:cursor-backup` 或推到新仓库；
+  2) 在 GitHub 网页查看旧仓库历史与文件；
+  3) 确认旧内容无价值后，再 `--force` 覆盖主分支。
+
+### 2026-04-18（提供 notebook 风格上传脚本）
+- 用户希望得到一个像 `run.ipynb` 前几行那样、可直接在 notebook/终端执行的完整 GitHub 分支上传代码块。
+- 已给出包含目录切换、状态检查、提交与推送到 `cursor-backup` 分支的完整命令模板。
