@@ -381,3 +381,10 @@
   4) `main.py` 本次未改动实际逻辑，相关注释未发现必须修正的错误项。
 - 说明：`data_processor.py` 仍可能在编辑器中出现少量类型提示类 diagnostics，但当前未发现会阻止脚本运行的 linter 错误。
 
+### 2026-04-18（预处理输出目录调整为 data_proc）
+- 用户要求：将预处理结果保存地址改到项目中的新文件夹 `data_proc`。
+- 已完成调整：
+  1) `data_processor.py` 现在会在原始 `base_dir` 下自动创建 `data_proc/`，并将 `dataset_X_2023.pt` 保存到该目录；
+  2) `data_processor_y.py` 现在会在其 `base_dir` 下自动创建 `data_proc/`，并将 `dataset_Y.pt` 保存到该目录；
+  3) 目录创建逻辑已内置，无需手动预先建目录。
+

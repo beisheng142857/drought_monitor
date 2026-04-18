@@ -6,8 +6,10 @@ from sklearn.cluster import KMeans
 
 # 1. 挂载并设置路径 (请替换为你的真实路径)
 base_dir = 'autodl-tmp/zyk_drought_monitor/data'
+output_dir = os.path.join(base_dir, 'data_proc')
+os.makedirs(output_dir, exist_ok=True)
 x_path = os.path.join(base_dir, 'dataset_X.pt')
-y_path = os.path.join(base_dir, 'dataset_Y.pt')
+y_path = os.path.join(output_dir, 'dataset_Y.pt')
 
 N_CLUSTERS = 4
 VALID_NDVI_THRESHOLD = 0.05
