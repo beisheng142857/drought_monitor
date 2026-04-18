@@ -1,0 +1,23 @@
+.idea
+.coverage
+
+__pycache__/
+
+# data 默认不上传（仅保留占位）
+data/*
+!data/.gitkeep
+
+# results 与可视化结果允许上传
+!drought_outputs/
+!drought_outputs/**
+
+results/*
+!results/.gitkeep
+!results/model_compare/
+!results/model_compare/**
+
+figures/*
+!figures/.gitkeep
+
+.ipynb_checkpoints/
+

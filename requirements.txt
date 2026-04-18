@@ -1,0 +1,9 @@
+torch
+numpy
+pandas
+matplotlib
+netCDF4
+scipy
+statsmodels
+scikit-learn
+torchmetrics
