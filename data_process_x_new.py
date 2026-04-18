@@ -1,87 +1,143 @@
 import os
+from typing import Sequence
+
 import numpy as np
 import rasterio
 from rasterio.windows import Window
 import torch
 
-# 【修改点 1】: 将默认容忍度从 0.1 放宽到 0.4 (允许 40% 的数据是 NaN/缺失)
-def process_tiffs_to_tensor_robust(tiff_paths, patch_size=128, stride=64, nodata_threshold=0.4):
-    print(f"开始处理 {len(tiff_paths)} 个时相的影像...")
-    
-    with rasterio.open(tiff_paths[0]) as src:
-        h, w = src.height, src.width
-        bands = src.count
+RAW_DATA_DIR = '/root/autodl-tmp/zyk_drought_monitor/data_raw/gee_tiffs'
+OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data'
+TARGET_YEAR = 2023
+TARGET_MONTHS = [5, 6, 7, 8, 9]
+FILE_PREFIX = 'Fused_100m'
+PATCH_SIZE = 128
+STRIDE = 64
+NODATA_THRESHOLD = 0.4
+NORMALIZE_CHANNELS = False
+EPS = 1e-8
 
-    valid_patches = []
-    datasets = [rasterio.open(p) for p in tiff_paths]
-    
-    min_invalid_ratio = 1.0 # 用于诊断：记录全图中质量最好的一块的缺失率
 
-    for y in range(0, h - patch_size + 1, stride):
-        for x in range(0, w - patch_size + 1, stride):
-            window = Window(x, y, patch_size, patch_size)
-            patch = np.stack([ds.read(window=window) for ds in datasets], axis=0)
-            
-            invalid_mask = np.isnan(patch) | np.isinf(patch) | (patch < -1000) | (patch > 10000)
-            invalid_ratio = invalid_mask.sum() / patch.size
-            
-            # 记录看到过的最低缺失率
-            if invalid_ratio < min_invalid_ratio:
-                min_invalid_ratio = invalid_ratio
-            
-            if invalid_ratio > nodata_threshold:
-                continue
-            
-            patch[invalid_mask] = 0.0
-            valid_patches.append(patch)
+def build_tiff_paths(year: int, months: Sequence[int], input_dir: str) -> list[str]:
+    return [os.path.join(input_dir, f'{FILE_PREFIX}_{year}_{month:02d}.tif') for month in months]
 
-    for ds in datasets: 
-        ds.close()
-    
-    # 【修改点 2】: 给出更精确的诊断报错信息
-    if not valid_patches:
-        raise ValueError(f"\n❌ 严重错误：所有图块都被过滤掉了！\n"
-                         f"-> 你设置的最高容忍度是允许 {nodata_threshold*100}% 的像素缺失。\n"
-                         f"-> 但经扫描，全图中数据质量【最好】的一块，其无效像素比例也达到了 {min_invalid_ratio*100:.2f}%！\n"
-                         f"结论：你的 TIFF 影像中存在整月或整波段级别的大面积缺失，请检查 GEE 下载源。")
 
-    full_tensor = np.array(valid_patches, dtype=np.float32) 
-    
-    print("正在执行严格波段归一化... (已启用内存优化与加速)")
-    for c in range(bands):
-        # 创建对当前波段的引用，不占用新内存
-        band_slice = full_tensor[:, :, c, :, :]
-        
-        # 获取有效像素的布尔掩码
-        valid_mask = band_slice != 0.0
-        
-        # 仅提取有效像素参与计算
-        valid_pixels = band_slice[valid_mask]
-        
-        if len(valid_pixels) > 0:
-            mean, std = valid_pixels.mean(), valid_pixels.std()
-            # 【核心优化】：使用掩码就地(in-place)更新数值
-            # 只有 valid_mask 为 True 的地方会被修改，0.0 依然是 0.0
-            band_slice[valid_mask] = (valid_pixels - mean) / (std + 1e-8)
-            print(f"波段 {c} 归一化完成 (Mean: {mean:.4f}, Std: {std:.4f})")
-        else:
-            print(f"⚠️ 警告：波段 {c} 全是 0.0，没有提取到任何有效数据！")
+def validate_tiff_paths(tiff_paths: Sequence[str]) -> None:
+    missing_paths = [path for path in tiff_paths if not os.path.exists(path)]
+    if missing_paths:
+        missing_text = '\n'.join(f'  - {path}' for path in missing_paths)
+        raise FileNotFoundError(f'以下 TIFF 文件不存在：\n{missing_text}')
 
-    full_tensor = np.nan_to_num(full_tensor, nan=0.0, posinf=0.0, neginf=0.0)
-    
-# 执行部分保持不变...
 
-if __name__ == "__main__":
-    # 请根据你当前的实际路径进行修改
-    base_dir = '/content/drive/MyDrive/GEE_Drought_Project'
-    fin_dir = '/content/drive/MyDrive/drought_monitor/data_new'
 
-    # 假设你的文件名为 Fused_100m_2023_05.tif 到 09.tif
-    tiff_files = [os.path.join(base_dir, f'Fused_100m_2023_{m:02d}.tif') for m in range(5, 10)]
-    
-    out_x_path = os.path.join(fin_dir, 'dataset_X_2023.pt')
-    
-    # 执行生成并保存
-    X_tensor = process_tiffs_to_tensor_robust(tiff_files, patch_size=128, stride=64)
-    torch.save(X_tensor, out_x_path)
-    print(f"安全干净的 X_tensor 已保存至: {out_x_path}")
+def read_window_with_mask(dataset: rasterio.io.DatasetReader, window: Window) -> tuple[np.ndarray, np.ndarray]:
+    data = dataset.read(window=window).astype(np.float32)
+    invalid_mask = ~np.isfinite(data)
+
+    nodata_value = dataset.nodata
+    if nodata_value is not None:
+        invalid_mask |= data == nodata_value
+
+    return data, invalid_mask
+
+
+
+def normalize_channels_inplace(full_tensor: np.ndarray) -> None:
+    _, _, channels, _, _ = full_tensor.shape
+    for channel_idx in range(channels):
+        channel_slice = full_tensor[:, :, channel_idx, :, :]
+        valid_mask = channel_slice != 0.0
+        valid_pixels = channel_slice[valid_mask]
+
+        if valid_pixels.size == 0:
+            print(f'⚠️ 波段 {channel_idx} 全是 0，跳过归一化。')
+            continue
+
+        mean = valid_pixels.mean()
+        std = valid_pixels.std()
+        channel_slice[valid_mask] = (valid_pixels - mean) / (std + EPS)
+        print(f'波段 {channel_idx} 归一化完成 (mean={mean:.4f}, std={std:.4f})')
+
+
+
+def process_tiffs_to_tensor(
+    tiff_paths: Sequence[str],
+    patch_size: int = PATCH_SIZE,
+    stride: int = STRIDE,
+    nodata_threshold: float = NODATA_THRESHOLD,
+    normalize_channels: bool = NORMALIZE_CHANNELS,
+) -> torch.Tensor:
+    validate_tiff_paths(tiff_paths)
+    print(f'开始处理 {len(tiff_paths)} 个时相的影像...')
+
+    datasets = [rasterio.open(path) for path in tiff_paths]
+    try:
+        reference = datasets[0]
+        height, width, bands = reference.height, reference.width, reference.count
+        print(f'影像尺寸: {width} x {height}, 波段数: {bands}')
+
+        for dataset in datasets[1:]:
+            if dataset.height != height or dataset.width != width or dataset.count != bands:
+                raise ValueError('输入 TIFF 的空间尺寸或波段数不一致，无法直接堆叠为时间序列。')
+
+        valid_patches: list[np.ndarray] = []
+        best_invalid_ratio = 1.0
+
+        for y in range(0, height - patch_size + 1, stride):
+            for x in range(0, width - patch_size + 1, stride):
+                window = Window(x, y, patch_size, patch_size)
+                window_data = []
+                window_invalid_masks = []
+
+                for dataset in datasets:
+                    data, invalid_mask = read_window_with_mask(dataset, window)
+                    window_data.append(data)
+                    window_invalid_masks.append(invalid_mask)
+
+                patch = np.stack(window_data, axis=0)
+                invalid_mask = np.stack(window_invalid_masks, axis=0)
+                invalid_ratio = invalid_mask.mean()
+                best_invalid_ratio = min(best_invalid_ratio, float(invalid_ratio))
+
+                if invalid_ratio > nodata_threshold:
+                    continue
+
+                patch[invalid_mask] = 0.0
+                valid_patches.append(patch)
+
+        if not valid_patches:
+            raise ValueError(
+                '没有提取到有效图块。'
+                f' 当前允许的最大无效像元比例为 {nodata_threshold:.2f}，'
+                f'但扫描到的最佳窗口无效比例也有 {best_invalid_ratio:.4f}。'
+            )
+
+        full_tensor = np.asarray(valid_patches, dtype=np.float32)
+
+        if normalize_channels:
+            print('正在按波段对非零像元做归一化...')
+            normalize_channels_inplace(full_tensor)
+
+        full_tensor = np.nan_to_num(full_tensor, nan=0.0, posinf=0.0, neginf=0.0)
+        torch_tensor = torch.from_numpy(full_tensor)
+        print(f'生成的张量形状 (Batch, Time, Channels, H, W): {tuple(torch_tensor.shape)}')
+        return torch_tensor
+    finally:
+        for dataset in datasets:
+            dataset.close()
+
+
+if __name__ == '__main__':
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    tiff_files = build_tiff_paths(TARGET_YEAR, TARGET_MONTHS, RAW_DATA_DIR)
+    output_path = os.path.join(OUTPUT_DIR, f'dataset_X_{TARGET_YEAR}.pt')
+
+    x_tensor = process_tiffs_to_tensor(
+        tiff_files,
+        patch_size=PATCH_SIZE,
+        stride=STRIDE,
+        nodata_threshold=NODATA_THRESHOLD,
+        normalize_channels=NORMALIZE_CHANNELS,
+    )
+    torch.save(x_tensor, output_path)
+    print(f'X_tensor 已保存至: {output_path}')

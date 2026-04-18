@@ -60,7 +60,7 @@ model_params = {
     },
     "convlstm": {
         "batch_gen": {
-            # 假设你拼成张量时的顺序是: 0:NDVI, 1:NDWI, 2:VV, 3:VH
+            # 当前拼成张量时的顺序是: 0:NDVI, 1:VV, 2:VH, 3:VVVH
             "input_dim": [0, 1, 2, 3],  
             "output_dim": 1,         # 输出1张分类图
             "window_in_len": 5,      # 5个月的输入时间步
@@ -83,7 +83,7 @@ model_params = {
             "window_in": 5,            
             "num_layers": 2,           # 建议增加为2层以提取更复杂的时空特征
             "encoder_params": {
-                "input_dim": 4,        # ★ 4个输入通道 (NDVI, NDWI, VV, VH)
+                "input_dim": 4,        # ★ 4个输入通道 (NDVI, VV, VH, VVVH)
                 "hidden_dims": [64, 64], # LSTM隐藏状态通道数，最后一层决定输出前的特征维度
                 "kernel_size": [3, 3],
                 "bias": True,
@@ -218,7 +218,7 @@ model_params = {
     },
     "traj_gru": {
         "batch_gen": {
-            "input_dim": [0, 1, 2, 3],  # 统一为 NDVI, NDWI, VV, VH
+            "input_dim": [0, 1, 2, 3],  # 统一为 NDVI, VV, VH, VVVH
             "output_dim": 1,
             "window_in_len": 5,         # 5个月的输入时间步
             "window_out_len": 1,

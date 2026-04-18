@@ -354,3 +354,30 @@
 - 根据终端输出 `master -> cursor-backup` 与 `Your branch is up to date with 'origin/cursor-backup'`，已确认这次推送实际成功。
 - 关键解释：当前是“本地分支名仍为 `master`，但其跟踪并推送到远端分支 `cursor-backup`”的状态，因此不是上传失败，而是本地/远端分支名不同导致的理解混淆。
 
+### 2026-04-18（预处理脚本检查与修正）
+- 用户确认：当前已下载所有年份的 4 月数据，希望检查并修正 `zyk_drought_monitor` 中的数据预处理脚本。
+- 检查结论：项目内原有预处理脚本存在以下主要问题：
+  1) `data_processor.py` 与 `data_processor_y.py` 仍保留 Colab/Google Drive 路径，不能直接在当前 AutoDL 项目目录运行；
+  2) `data_processor_y.py` 仍把第 2 通道假定为 `NDWI`，与当前 GEE 导出特征 `NDVI/VV/VH/VVVH` 不一致；
+  3) `data_process_x_new.py` 原脚本虽然尝试做鲁棒切片，但缺少 `return` 返回张量，主程序 `torch.save(X_tensor, ...)` 实际会保存失败；
+  4) 当前项目 `data/` 目录为空，`data_raw/` 目录尚未建立，说明预处理目录规范仍需统一。
+- 已完成修正：
+  1) 重写 `data_process_x_new.py`，统一到项目本地路径 `/root/autodl-tmp/zyk_drought_monitor/data_raw/gee_tiffs` 和输出目录 `/root/autodl-tmp/zyk_drought_monitor/data`；
+  2) 新版 X 脚本加入文件存在性检查、窗口化读取、无效值掩膜、可选按通道归一化，并正确返回 `torch.Tensor`；
+  3) 重写 `data_process_y_new.py`，按当前通道定义 `0=NDVI, 1=VV, 2=VH, 3=VVVH` 构建伪标签，其中聚类特征使用 `NDVI + VV + VH`；
+  4) 新版 Y 脚本支持按年份读取 `dataset_X_<year>.pt` 并输出 `dataset_Y_<year>.pt`。
+- 后续优化建议：
+  1) 将 `TARGET_YEAR` 和月份列表参数化，逐年批处理生成 2020–2025（以及后续扩展年份）的 X/Y 数据；
+  2) 建立统一原始数据目录 `data_raw/gee_tiffs/`，避免 GEE 导出结果散落；
+  3) 在生成完每年 X/Y 后，增加 shape、类别分布和缺失比例检查；
+  4) 训练入口 `main.py` 与配置文件中的通道注释仍写有 `NDWI`，后续建议同步清理，避免文档与真实数据定义不一致。
+
+### 2026-04-18（旧版预处理脚本与训练注释同步修正）
+- 用户要求：优化 `data_processor.py`、`data_processor_y.py`，但保留原有路径设置不变；同时只修正 `main.py` 与 `config.py` 中的错误注释。
+- 已完成处理：
+  1) `data_processor.py` 在保留原有 `base_dir` 路径的前提下，加入 TIFF 文件存在性检查、窗口化读取、无效值掩膜、图块过滤与可选归一化，使其比原先一次性 `np.stack(ds.read())` 的方式更稳健；
+  2) `data_processor_y.py` 改为与当前真实通道定义一致：`0=NDVI, 1=VV, 2=VH, 3=VVVH`，并用 `NDVI + VV + VH` 的 KMeans 协同聚类生成伪标签；
+  3) `config.py` 中 ConvLSTM / TrajGRU 的输入通道注释已从 `NDWI` 修正为 `VV / VH / VVVH` 的真实定义；
+  4) `main.py` 本次未改动实际逻辑，相关注释未发现必须修正的错误项。
+- 说明：`data_processor.py` 仍可能在编辑器中出现少量类型提示类 diagnostics，但当前未发现会阻止脚本运行的 linter 错误。
+

@@ -1,48 +1,71 @@
-
-#基于多源特征协同聚类（无监督）
-
-import torch
-import numpy as np
 import os
+
+import numpy as np
+import torch
 from sklearn.cluster import KMeans
 
-base_dir = '/content/drive/MyDrive/drought_monitor/data_new'
-x_path = os.path.join(base_dir, 'dataset_X_2023_new.pt')
-y_path = os.path.join(base_dir, 'dataset_Y_2023_new.pt')
+DATA_DIR = '/root/autodl-tmp/zyk_drought_monitor/data'
+TARGET_YEAR = 2023
+N_CLUSTERS = 4
+VALID_NDVI_THRESHOLD = 0.05
+RANDOM_STATE = 42
+N_INIT = 10
 
-print("加载特征并修正波段映射...")
-X_tensor = torch.load(x_path) 
 
-# 正确映射逻辑：0-NDVI, 1-VV, 2-VH, 3-VVVH
-# 提取最后一个月的特征进行标签构造
-last_month = X_tensor[:, -1, :, :, :].cpu().numpy()
-ndvi = last_month[:, 0, :, :]
-vv = last_month[:, 1, :, :]
-vh = last_month[:, 2, :, :]
+def generate_pseudo_labels(
+    x_tensor: torch.Tensor,
+    n_clusters: int = N_CLUSTERS,
+    valid_ndvi_threshold: float = VALID_NDVI_THRESHOLD,
+) -> torch.Tensor:
+    if x_tensor.ndim != 5:
+        raise ValueError(f'X_tensor 维度应为 5，但实际得到 {x_tensor.ndim}。')
 
-# 构建有效植被掩膜
-valid_mask = ndvi > 0.05 
-batch, h, w = ndvi.shape
+    if x_tensor.shape[2] < 3:
+        raise ValueError('当前伪标签构建至少需要 3 个通道：NDVI、VV、VH。')
 
-# 提取特征进行协同聚类
-print("执行多源特征协同聚类 (NDVI + VV + VH)...")
-features = np.stack([ndvi[valid_mask], vv[valid_mask], vh[valid_mask]], axis=1)
+    print('加载特征并按当前通道定义生成伪标签...')
+    last_month = x_tensor[:, -1, :, :, :].cpu().numpy()
 
-# 聚类划分为 4 个干旱等级
-n_clusters = 4
-kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-labels = kmeans.fit_predict(features)
+    ndvi = last_month[:, 0, :, :]
+    vv = last_month[:, 1, :, :]
+    vh = last_month[:, 2, :, :]
 
-# 语义对齐：根据平均 NDVI 排序，NDVI 越高 = 越不干旱 (等级0)
-cluster_means = [features[labels == i, 0].mean() for i in range(n_clusters)]
-rank = np.argsort(cluster_means)[::-1] # NDVI 从大到小排列
-map_dict = {old: new for new, old in enumerate(rank)}
-final_labels = np.array([map_dict[l] for l in labels])
+    valid_mask = np.isfinite(ndvi) & np.isfinite(vv) & np.isfinite(vh) & (ndvi > valid_ndvi_threshold)
+    if not np.any(valid_mask):
+        raise ValueError('没有找到可用于聚类的有效像元，请检查 X_tensor 数值范围与 NDVI 阈值。')
 
-# 重构标签图
-Y_tensor = np.zeros((batch, h, w), dtype=np.int64)
-Y_tensor[valid_mask] = final_labels
+    batch, height, width = ndvi.shape
+    features = np.stack([ndvi[valid_mask], vv[valid_mask], vh[valid_mask]], axis=1)
 
-Y_pt = torch.from_numpy(Y_tensor)
-print(f"标签生成完毕，分布情况: {torch.bincount(Y_pt.flatten())}")
-torch.save(Y_pt, y_path)
+    print(f'执行多源特征协同聚类 (NDVI + VV + VH)，有效样本数: {features.shape[0]}')
+    kmeans = KMeans(n_clusters=n_clusters, random_state=RANDOM_STATE, n_init=N_INIT)
+    cluster_labels = kmeans.fit_predict(features)
+
+    cluster_ndvi_means = np.array([
+        features[cluster_labels == idx, 0].mean() if np.any(cluster_labels == idx) else -np.inf
+        for idx in range(n_clusters)
+    ])
+    rank = np.argsort(cluster_ndvi_means)[::-1]
+    label_map = {old_idx: new_idx for new_idx, old_idx in enumerate(rank)}
+    ordered_labels = np.vectorize(label_map.get)(cluster_labels).astype(np.int64)
+
+    y_array = np.zeros((batch, height, width), dtype=np.int64)
+    y_array[valid_mask] = ordered_labels
+
+    y_tensor = torch.from_numpy(y_array)
+    print(f'Y_tensor 生成完毕，形状: {tuple(y_tensor.shape)}')
+    print(f'标签类别分布: {torch.bincount(y_tensor.flatten(), minlength=n_clusters)}')
+    return y_tensor
+
+
+if __name__ == '__main__':
+    x_path = os.path.join(DATA_DIR, f'dataset_X_{TARGET_YEAR}.pt')
+    y_path = os.path.join(DATA_DIR, f'dataset_Y_{TARGET_YEAR}.pt')
+
+    if not os.path.exists(x_path):
+        raise FileNotFoundError(f'未找到输入张量: {x_path}')
+
+    x_tensor = torch.load(x_path)
+    y_tensor = generate_pseudo_labels(x_tensor)
+    torch.save(y_tensor, y_path)
+    print(f'Y_tensor 已保存至: {y_path}')
