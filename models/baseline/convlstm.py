@@ -48,28 +48,35 @@ class ConvLSTM(nn.Module):
         self.hidden = None
         self.is_trainable = True
     
-    def __forward_input_attn(self, x, hidden, time_step):
-        
+    def __forward_input_attn(self, x_t, hidden):
+    
+    # x_t: (B, D, H, W)，仅当前时刻输入
+    # hidden: (h, c)
+    # return:
+    #     x_t_attn: (B, D, H, W)
+    #     alpha_tensor: (B, D, H, W)
+    
         if self.input_attn is None:
-            return x, None
-            
-        d_dim = x.shape[2] # 获取干旱监测特征通道数
+            return x_t, None
 
+        d_dim = x_t.shape[1]
         alpha_list = []
+
         for k in range(d_dim):
-            x_k = x[:, :, k].clone()
-            alpha = self.input_attn(x_k, hidden)
-            alpha_list.append(alpha)
+            x_k = x_t[:, k:k + 1, :, :]
+            alpha_k = self.input_attn(x_k, hidden)
+            alpha_list.append(alpha_k)
 
-        # 拼接并在特征维度上进行 softmax 归一化
         alpha_tensor = torch.cat(alpha_list, dim=1)
-        alpha_tensor = F.softmax(alpha_tensor, dim=1)
 
-        # 将注意力权重乘回原特征
-        x[:, time_step] *= alpha_tensor
+        # 更平滑的逐通道门控，避免 softmax 强竞争
+        alpha_tensor = torch.sigmoid(alpha_tensor)
 
-        return x, alpha_tensor
+        # 残差式加权，避免直接压没原始信息
+        x_t_attn = x_t * (1.0 + alpha_tensor)
 
+        return x_t_attn, alpha_tensor
+    
     def init_hidden(self, batch_size):
         init_states = []
         for i in range(self.num_layers):
@@ -130,14 +137,16 @@ class ConvLSTM(nn.Module):
             alphas = []  # 【新增】用于记录注意力权重，方便后续在干旱项目中分析可视化
             
             for t in range(seq_len):
-                # 【新增】如果是编码器的第一层，先利用隐藏状态对输入进行注意力加权
+                x_t = cur_layer_input[:, t, :, :, :]
+
                 if block_name == 'encoder' and layer_idx == 0:
-                    cur_layer_input, alpha = self.__forward_input_attn(cur_layer_input, hidden=(h, c), time_step=t)
+                    x_t, alpha = self.__forward_input_attn(x_t, hidden=(h, c))
                     alphas.append(alpha)
-                
-                # 原有逻辑：送入 LSTM 单元
-                h, c = block[layer_idx](input_tensor=cur_layer_input[:, t, :, :, :],
-                                        cur_state=[h, c])
+
+                h, c = block[layer_idx](
+                    input_tensor=x_t,
+                    cur_state=[h, c]
+                )
                 output_inner.append(h)
 
             layer_output = torch.stack(output_inner, dim=1)

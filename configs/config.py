@@ -91,7 +91,7 @@ model_params = {
                 "num_classes": 4       # ★ 新增：输出4个干旱等级（无，轻，中，重）
             },
             "input_attn_params": {
-                "input_dim": 5,        # 需与数据特征维度一致
+                "input_dim": 1,        # 需与数据特征维度一致
                 "hidden_dim": 64,      # 建议与 Encoder 第一层 hidden_dim 一致
                 "attn_channel": 16,    # 注意力中间卷积通道数
                 "kernel_size": 3       # 卷积核大小
@@ -255,5 +255,37 @@ model_params = {
             },
             "num_classes": 4            # 输出4个干旱等级（无，轻，中，重）
         },
+    },
+    "convgru": {
+        "batch_gen": {
+            "input_dim": [0, 1, 2, 3],
+            "output_dim": 1,
+            "window_in_len": 5,
+            "window_out_len": 1,
+            "batch_size": 16,
+            "shuffle": True,
+            "stride": 1
+        },
+        "trainer": {
+            "num_epochs": 50,
+            "momentum": 0.7,
+            "optimizer": "adam",
+            "weight_decay": 0.00023,
+            "learning_rate": Param([0.01, 0.001, 0.0005, 0.00001]),
+            "clip": 5,
+            "early_stop_tolerance": 4
+        },
+        "core": {
+            "input_size": (128, 128),
+            "window_in": 5,
+            "num_layers": 2,
+            "encoder_params": {
+                "input_dim": 4,
+                "hidden_dims": [64, 64],
+                "kernel_size": [3, 3],
+                "bias": True
+            },
+            "num_classes": 4
+        }
     },
 }

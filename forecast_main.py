@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 from typing import Tuple
@@ -10,18 +11,20 @@ if code_dir not in sys.path:
     sys.path.append(code_dir)
 os.chdir(code_dir)
 
-from models.baseline.convlstm import ConvLSTM # atte-convlstm
-from models.baseline.convgru import ConvGRU
-from models.baseline.traj_gru import TrajGRU # TrajGRU
-from trainer import Trainer
 from configs.config import model_params
+from models.baseline.convgru import ConvGRU
+from models.baseline.convlstm import ConvLSTM
+from models.baseline.traj_gru import TrajGRU
+from trainer import Trainer
 
-ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
-LABEL_MODE = 'threshold'        # 可选: 'kmeans' 或 'threshold'
+ACTIVE_MODEL = 'convgru'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'
 BATCH_SIZE = 16
 TRAIN_YEARS = [2021, 2022, 2023]
 VAL_YEAR = 2024
 TEST_YEAR = 2025
+FORECAST_INPUT_STEPS = 4  # 用前 4 个月预测第 5 个月旱情
+FORECAST_TARGET_MONTH_INDEX = 4  # 预测窗口内第 5 个月，对应索引 4
 X_CANDIDATE_DIRS = [
     '/root/autodl-tmp/data_proc',
     '/root/autodl-tmp/data_proc/data_proc',
@@ -62,7 +65,6 @@ class SimpleDataWrapper:
         raise ValueError(f'未知模式: {mode}')
 
 
-
 def find_existing_file(candidate_dirs, candidate_names):
     checked_paths = []
     for directory in candidate_dirs:
@@ -76,14 +78,12 @@ def find_existing_file(candidate_dirs, candidate_names):
     raise FileNotFoundError(f'未找到任何候选文件，请检查数据路径或文件名：\n{checked_text}')
 
 
-
 def resolve_x_path(year: int) -> str:
     candidate_names = [
         f'dataset_X_{year}.pt',
         'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}.pt',
     ]
     return find_existing_file(X_CANDIDATE_DIRS, candidate_names)
-
 
 
 def resolve_y_path(year: int, label_mode: str) -> str:
@@ -103,6 +103,24 @@ def resolve_y_path(year: int, label_mode: str) -> str:
     return find_existing_file(Y_CANDIDATE_DIRS, candidate_names)
 
 
+def build_forecast_dataset(x_tensor: torch.Tensor, y_tensor: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    if x_tensor.ndim != 5:
+        raise ValueError(f'X_tensor 形状应为 (Batch, Time, Channel, H, W)，当前为 {x_tensor.shape}')
+    if y_tensor.ndim != 3:
+        raise ValueError(f'Y_tensor 形状应为 (Batch, H, W)，当前为 {y_tensor.shape}')
+    if x_tensor.shape[0] != y_tensor.shape[0]:
+        raise ValueError('X_tensor 与 Y_tensor 的样本数不一致。')
+    if x_tensor.shape[1] <= FORECAST_TARGET_MONTH_INDEX:
+        raise ValueError(
+            f'当前样本时间步数为 {x_tensor.shape[1]}，不足以预测索引 {FORECAST_TARGET_MONTH_INDEX} 对应的未来月份。'
+        )
+    if FORECAST_INPUT_STEPS >= x_tensor.shape[1]:
+        raise ValueError('FORECAST_INPUT_STEPS 必须小于总时间步数，否则不构成预测任务。')
+
+    forecast_x = x_tensor[:, :FORECAST_INPUT_STEPS, :, :, :].contiguous()
+    forecast_y = y_tensor.contiguous()
+    return forecast_x, forecast_y
+
 
 def load_year_pair(year: int, label_mode: str) -> Tuple[torch.Tensor, torch.Tensor]:
     x_path = resolve_x_path(year)
@@ -111,8 +129,9 @@ def load_year_pair(year: int, label_mode: str) -> Tuple[torch.Tensor, torch.Tens
     print(f'加载 {year} 年标签({label_mode}): {y_path}')
     x_tensor = torch.load(x_path, map_location='cpu')
     y_tensor = torch.load(y_path, map_location='cpu')
-    return x_tensor, y_tensor
-
+    forecast_x, forecast_y = build_forecast_dataset(x_tensor, y_tensor)
+    print(f'构造成预测样本后: X={forecast_x.shape}, Y={forecast_y.shape}')
+    return forecast_x, forecast_y
 
 
 def compute_class_weights(y_train: torch.Tensor, device: torch.device) -> torch.Tensor:
@@ -123,12 +142,17 @@ def compute_class_weights(y_train: torch.Tensor, device: torch.device) -> torch.
     return class_weights.to(device)
 
 
-
 def build_model(active_model: str, device: torch.device):
     if active_model in ['convlstm_attn', 'convlstm_no_attn']:
-        model_config = model_params['convlstm']
+        model_config = copy.deepcopy(model_params['convlstm'])
+        model_config['core']['window_in'] = FORECAST_INPUT_STEPS
         use_attention = active_model == 'convlstm_attn'
-        input_attn_params = model_config['core']['input_attn_params'] if use_attention else None
+        if use_attention:
+            model_config['core']['input_attn_params']['input_dim'] = FORECAST_INPUT_STEPS
+            input_attn_params = model_config['core']['input_attn_params']
+        else:
+            input_attn_params = None
+
         model = ConvLSTM(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -136,11 +160,11 @@ def build_model(active_model: str, device: torch.device):
             encoder_params=model_config['core']['encoder_params'],
             input_attn_params=input_attn_params,
             device=device,
-        )
+        ).to(device)
         model_name = 'convlstm_attn' if use_attention else 'convlstm_no_attn'
-        save_name = f'drought_{model_name}_best_{LABEL_MODE}.pth'
     elif active_model == 'convgru':
-        model_config = model_params['convgru']
+        model_config = copy.deepcopy(model_params['convgru'])
+        model_config['core']['window_in'] = FORECAST_INPUT_STEPS
         model = ConvGRU(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -150,9 +174,9 @@ def build_model(active_model: str, device: torch.device):
             device=device,
         ).to(device)
         model_name = 'convgru'
-        save_name = f'drought_{model_name}_best_{LABEL_MODE}.pth'
     elif active_model == 'traj_gru':
-        model_config = model_params['traj_gru']
+        model_config = copy.deepcopy(model_params['traj_gru'])
+        model_config['core']['window_in'] = FORECAST_INPUT_STEPS
         model = TrajGRU(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -163,20 +187,18 @@ def build_model(active_model: str, device: torch.device):
             device=device,
         ).to(device)
         model_name = 'traj_gru'
-        save_name = f'drought_{model_name}_best_{LABEL_MODE}.pth'
     else:
-        raise ValueError(
-            '当前监测任务建议使用的模型为: convlstm_attn、convlstm_no_attn、convgru、traj_gru。'
-        )
+        raise ValueError('当前预测任务支持: convlstm_attn、convlstm_no_attn、convgru、traj_gru。')
 
+    save_name = f'drought_forecast_{model_name}_best_{LABEL_MODE}.pth'
     return model, model_config, save_name, model_name
 
 
-
 def main():
-    print('正在加载历史数据...')
+    print('正在加载历史数据并构造预测样本...')
     print(f'使用模型: {ACTIVE_MODEL}')
     print(f'标签方案: {LABEL_MODE}')
+    print(f'预测设定: 输入前 {FORECAST_INPUT_STEPS} 个月，预测第 {FORECAST_TARGET_MONTH_INDEX + 1} 个月旱情')
 
     train_pairs = [load_year_pair(year, LABEL_MODE) for year in TRAIN_YEARS]
     x_train = torch.cat([pair[0] for pair in train_pairs], dim=0)
@@ -214,17 +236,17 @@ def main():
         class_weights=class_weights,
     )
 
-    print('开始模型训练...')
+    print('开始预测模型训练...')
     losses, best_train, best_val = trainer.train(model=model, batch_generator=batch_generator)
 
-    print(f'\n开始在 {TEST_YEAR} 年未见过的测试集上进行最终评估...')
+    print(f'\n开始在 {TEST_YEAR} 年未见过的测试集上进行最终预测评估...')
     test_loss, test_metrics = trainer.evaluate(model=model, batch_generator=batch_generator)
     print(f'测试集结果 -> Loss: {test_loss:.5f}, ' + trainer.get_metric_string(test_metrics))
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     save_path = os.path.join(OUTPUT_DIR, save_name)
     torch.save(model.state_dict(), save_path)
-    print(f'训练完成，最优 {model_name} 模型权重已保存至：{save_path}！')
+    print(f'训练完成，最优预测模型 {model_name} 权重已保存至：{save_path}！')
     print(f'本次训练标签方案：{LABEL_MODE}')
     print(f'最佳训练指标：{best_train}')
     print(f'最佳验证指标：{best_val}')
