@@ -26,13 +26,15 @@ TEST_YEAR = 2024
 FORECAST_INPUT_STEPS = 4  # 用前 4 个月预测第 5 个月旱情
 FORECAST_TARGET_MONTH_INDEX = 4  # 预测窗口内第 5 个月，对应索引 4
 X_CANDIDATE_DIRS = [
-    '/root/autodl-tmp/data_proc',
+    '/root/autodl-tmp/data_proc', # V1
+    # '/root/autodl-tmp/zyk_drought_monitor/data_V2' #V2
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
 ]
 Y_CANDIDATE_DIRS = [
-    '/root/autodl-tmp/data_proc',
+    '/root/autodl-tmp/data_proc', #V1
+    # '/root/autodl-tmp/zyk_drought_monitor/data_V2' #V2
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
