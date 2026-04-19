@@ -139,7 +139,7 @@ def main():
         print(f'开始构建 {year} 年的 forecasting V2 连续月份 X_tensor')
         tiff_files = build_tiff_paths(year, args.months, args.input_dir, args.file_prefix)
         x_tensor = process_tiffs_to_tensor(
-            tiff_files=tiff_files,
+            tiff_paths=tiff_files,
             patch_size=args.patch_size,
             stride=args.stride,
             nodata_threshold=args.nodata_threshold,
