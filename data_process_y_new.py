@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='构建 forecasting V2 按月份展开的时间序列 Y_tensor')
     parser.add_argument('--input_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/data_V2')
     parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/data_V2')
-    parser.add_argument('--years', nargs='+', type=int, default=[2021, 2022]) #2021, 2022, 2023, 2024, 2025
+    parser.add_argument('--years', nargs='+', type=int, default=[2021, 2022, 2023, 2024]) #, 2025
     parser.add_argument('--input_prefix', type=str, default='sequence_X')
     parser.add_argument('--output_prefix', type=str, default='sequence_Y_threshold')
     parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans'])

@@ -17,7 +17,7 @@ from models.baseline.convlstm import ConvLSTM
 from models.baseline.traj_gru import TrajGRU
 from trainer import Trainer
 
-ACTIVE_MODEL = 'convlstm_no_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+ACTIVE_MODEL = 'convgru'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
 LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'
 BATCH_SIZE = 16
 TRAIN_YEARS = [2021, 2022]
@@ -26,15 +26,15 @@ TEST_YEAR = 2024
 FORECAST_INPUT_STEPS = 4  # 用前 4 个月预测第 5 个月旱情
 FORECAST_TARGET_MONTH_INDEX = 4  # 预测窗口内第 5 个月，对应索引 4
 X_CANDIDATE_DIRS = [
-    '/root/autodl-tmp/data_proc', # V1
-    # '/root/autodl-tmp/zyk_drought_monitor/data_V2' #V2
+    '/root/autodl-tmp/data_proc',
+    '/root/autodl-tmp/zyk_drought_monitor/data_V2',
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
 ]
 Y_CANDIDATE_DIRS = [
-    '/root/autodl-tmp/data_proc', #V1
-    # '/root/autodl-tmp/zyk_drought_monitor/data_V2' #V2
+    '/root/autodl-tmp/data_proc',
+    '/root/autodl-tmp/zyk_drought_monitor/data_V2',
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
@@ -79,11 +79,11 @@ def find_existing_file(candidate_dirs, candidate_names):
     checked_text = '\n'.join(f'  - {path}' for path in checked_paths)
     raise FileNotFoundError(f'未找到任何候选文件，请检查数据路径或文件名：\n{checked_text}')
 
-
+    #数据头修改forecast_v2 / dataset_X
 def resolve_x_path(year: int) -> str:
     candidate_names = [
-        f'dataset_X_{year}.pt',
-        'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}.pt',
+        f'forecast_v2_X_{year}.pt',
+        'forecast_v2_X.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_X_{year}.pt',
     ]
     return find_existing_file(X_CANDIDATE_DIRS, candidate_names)
 
@@ -91,13 +91,13 @@ def resolve_x_path(year: int) -> str:
 def resolve_y_path(year: int, label_mode: str) -> str:
     if label_mode == 'kmeans':
         candidate_names = [
-            f'dataset_Y_{year}.pt',
-            'dataset_Y.pt' if year == TRAIN_YEARS[0] else f'dataset_Y_{year}.pt',
+            f'forecast_v2_Y_{year}.pt',
+            'forecast_v2_Y.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_Y_{year}.pt',
         ]
     elif label_mode == 'threshold':
         candidate_names = [
-            f'dataset_Y_{year}_threshold.pt',
-            'dataset_Y_threshold.pt',
+            f'forecast_v2_Y_threshold_{year}.pt',
+            'forecast_v2_Y_threshold.pt',
         ]
     else:
         raise ValueError(f'不支持的 LABEL_MODE: {label_mode}')
