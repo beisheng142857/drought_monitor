@@ -42,8 +42,12 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 
 def resolve_test_paths(data_dirs: List[str], label_mode: str, test_year: int) -> Tuple[str, str]:
-    x_path = find_existing_file(data_dirs, [f'dataset_X_{test_year}.pt'])
-    y_names = [f'dataset_Y_{test_year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{test_year}.pt', 'dataset_Y.pt']
+    # x_path = find_existing_file(data_dirs, [f'dataset_X_{test_year}.pt'])
+    # y_names = [f'dataset_Y_{test_year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{test_year}.pt', 'dataset_Y.pt']
+    
+    x_path = find_existing_file(data_dirs, [f'forecast_v2_X_{test_year}.pt'])
+    y_names = [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt'] if label_mode == 'threshold' else [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt']
+
     y_path = find_existing_file(data_dirs, y_names)
     return x_path, y_path
 
@@ -173,9 +177,9 @@ def main():
     parser.add_argument('--test_year', type=int, default=2025)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--data_dirs', nargs='+', default=['/root/autodl-tmp/data_proc', '/root/autodl-tmp/data_proc/data_proc', '/content/drive/MyDrive/GEE_Drought_Project/data_proc', '/content/drive/MyDrive/drought_monitor/data_proc'])
+    parser.add_argument('--data_dirs', nargs='+', default=['/root/autodl-tmp/zyk_drought_monitor/data_V2', '/root/autodl-tmp/data_proc', '/root/autodl-tmp/data_proc/data_proc', '/content/drive/MyDrive/GEE_Drought_Project/data_proc', '/content/drive/MyDrive/drought_monitor/data_proc'])
     parser.add_argument('--checkpoints', nargs='+', required=True)
-    parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare')
+    parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2')
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True); setup_chinese_font(FONT_PATH); device = torch.device(args.device)
     x_path, y_path = resolve_test_paths(args.data_dirs, args.label_mode, args.test_year)

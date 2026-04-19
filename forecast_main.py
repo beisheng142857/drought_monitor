@@ -39,7 +39,8 @@ Y_CANDIDATE_DIRS = [
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
 ]
-OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data'
+# 输出路径
+OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data_V2'
 
 
 class SimpleDataWrapper:
@@ -84,6 +85,8 @@ def resolve_x_path(year: int) -> str:
     candidate_names = [
         f'forecast_v2_X_{year}.pt',
         'forecast_v2_X.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_X_{year}.pt',
+        # f'dataset_X_{year}.pt',
+        # 'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}.pt',
     ]
     return find_existing_file(X_CANDIDATE_DIRS, candidate_names)
 
@@ -93,11 +96,15 @@ def resolve_y_path(year: int, label_mode: str) -> str:
         candidate_names = [
             f'forecast_v2_Y_{year}.pt',
             'forecast_v2_Y.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_Y_{year}.pt',
+            #  f'dataset_Y_{year}.pt',
+            # 'dataset_Y.pt' if year == TRAIN_YEARS[0] else f'dataset_Y_{year}.pt',
         ]
     elif label_mode == 'threshold':
         candidate_names = [
-            f'forecast_v2_Y_threshold_{year}.pt',
-            'forecast_v2_Y_threshold.pt',
+            f'forecast_v2_Y_{year}.pt',
+            'forecast_v2_Y.pt',
+            # f'dataset_Y_{year}_threshold.pt',
+            # 'dataset_Y_threshold.pt',
         ]
     else:
         raise ValueError(f'不支持的 LABEL_MODE: {label_mode}')
@@ -129,10 +136,18 @@ def load_year_pair(year: int, label_mode: str) -> Tuple[torch.Tensor, torch.Tens
     y_path = resolve_y_path(year, label_mode)
     print(f'加载 {year} 年特征: {x_path}')
     print(f'加载 {year} 年标签({label_mode}): {y_path}')
-    x_tensor = torch.load(x_path, map_location='cpu')
-    y_tensor = torch.load(y_path, map_location='cpu')
-    forecast_x, forecast_y = build_forecast_dataset(x_tensor, y_tensor)
-    print(f'构造成预测样本后: X={forecast_x.shape}, Y={forecast_y.shape}')
+    
+    # 因为 V2 数据已经切片好了，直接把它当做 forecast_x 和 forecast_y
+    forecast_x = torch.load(x_path, map_location='cpu')
+    forecast_y = torch.load(y_path, map_location='cpu')
+
+    # -------- 新增：限制最大样本量，防止内存爆炸 --------
+    MAX_SAMPLES = 1000  # 你可以改成 1000 或 2000，视你的内存而定
+    if forecast_x.shape[0] > MAX_SAMPLES:
+        forecast_x = forecast_x[:MAX_SAMPLES]
+        forecast_y = forecast_y[:MAX_SAMPLES]
+    
+    print(f'已加载 V2 预测样本: X={forecast_x.shape}, Y={forecast_y.shape}')
     return forecast_x, forecast_y
 
 
@@ -219,6 +234,12 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'当前使用计算设备: {device}')
+
+    actual_channels = x_train.shape[2]
+    # 明确只更新我们当前使用的几个模型的通道维度（input_dim），绝不能动空间尺寸（input_size）
+    for model_key in ['convlstm', 'convgru', 'traj_gru']: 
+        model_params[model_key]['core']['encoder_params']['input_dim'] = actual_channels
+    print(f'已自动将模型输入通道数自适应调整为: {actual_channels}')
 
     print('正在计算损失函数类别权重...')
     class_weights = compute_class_weights(y_train, device)

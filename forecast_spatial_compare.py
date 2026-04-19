@@ -42,8 +42,10 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 
 def resolve_paths(data_dirs: List[str], label_mode: str, year: int) -> Tuple[str, str]:
-    x_path = find_existing_file(data_dirs, [f'dataset_X_{year}.pt'])
-    y_names = [f'dataset_Y_{year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{year}.pt', 'dataset_Y.pt']
+    # x_path = find_existing_file(data_dirs, [f'dataset_X_{year}.pt'])
+    # y_names = [f'dataset_Y_{year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{year}.pt', 'dataset_Y.pt']
+    x_path = find_existing_file(data_dirs, [f'forecast_v2_X_{year}.pt'])
+    y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt'] if label_mode == 'threshold' else [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
     y_path = find_existing_file(data_dirs, y_names)
     return x_path, y_path
 
@@ -127,7 +129,7 @@ def main():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--data_dirs', nargs='+', default=['/root/autodl-tmp/data_proc', '/root/autodl-tmp/data_proc/data_proc', '/content/drive/MyDrive/GEE_Drought_Project/data_proc', '/content/drive/MyDrive/drought_monitor/data_proc'])
     parser.add_argument('--checkpoints', nargs='+', required=True)
-    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare/forecast_spatial_prediction_compare.png')
+    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/forecast_spatial_prediction_compare.png')
     args = parser.parse_args()
     setup_chinese_font(FONT_PATH)
     device = torch.device(args.device)
@@ -135,6 +137,13 @@ def main():
     x_path, y_path = resolve_paths(args.data_dirs, args.label_mode, args.year)
     x_all_raw, y_all_raw = torch.load(x_path, map_location='cpu'), torch.load(y_path, map_location='cpu')
     x_all, y_all = build_forecast_dataset(x_all_raw, y_all_raw)
+    # 动态自适应通道数
+    actual_channels = x_all.shape[2]  # 在 forecast_main.py 中这里是 x_train.shape[2]
+    for model_key in model_params:
+        if 'encoder_params' in model_params[model_key]['core']:
+            model_params[model_key]['core']['encoder_params']['input_dim'] = actual_channels
+    print(f'已自动将模型输入通道数(input_dim)自适应调整为: {actual_channels}')
+
     if args.sample_index < 0 or args.sample_index >= x_all.shape[0]:
         raise IndexError(f'sample_index 越界，当前样本数为 {x_all.shape[0]}')
     x_sample = x_all[args.sample_index]; y_true = y_all[args.sample_index].numpy(); ref_map = x_sample[args.feature_time_index, args.feature_channel_index].numpy()
