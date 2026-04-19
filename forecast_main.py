@@ -17,7 +17,7 @@ from models.baseline.convlstm import ConvLSTM
 from models.baseline.traj_gru import TrajGRU
 from trainer import Trainer
 
-ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+ACTIVE_MODEL = 'convlstm_no_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
 LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'
 BATCH_SIZE = 16
 TRAIN_YEARS = [2021, 2022]
