@@ -17,12 +17,12 @@ from models.baseline.convlstm import ConvLSTM
 from models.baseline.traj_gru import TrajGRU
 from trainer import Trainer
 
-ACTIVE_MODEL = 'convlstm_no_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
 LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'
 BATCH_SIZE = 16
-TRAIN_YEARS = [2021, 2022, 2023]
-VAL_YEAR = 2024
-TEST_YEAR = 2025
+TRAIN_YEARS = [2021, 2022]
+VAL_YEAR = 2023
+TEST_YEAR = 2024
 FORECAST_INPUT_STEPS = 4  # 用前 4 个月预测第 5 个月旱情
 FORECAST_TARGET_MONTH_INDEX = 4  # 预测窗口内第 5 个月，对应索引 4
 X_CANDIDATE_DIRS = [

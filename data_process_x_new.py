@@ -1,3 +1,4 @@
+import argparse
 import os
 from typing import Sequence
 
@@ -8,8 +9,8 @@ import torch
 
 RAW_DATA_DIR = '/root/autodl-tmp/zyk_drought_monitor/data_raw/gee_tiffs'
 OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data'
-TARGET_YEAR = 2023
-TARGET_MONTHS = [5, 6, 7, 8, 9]
+DEFAULT_YEARS = [2021, 2022, 2023, 2024, 2025]
+DEFAULT_MONTHS = [4, 5, 6, 7, 8, 9]
 FILE_PREFIX = 'Fused_100m'
 PATCH_SIZE = 128
 STRIDE = 64
@@ -18,8 +19,23 @@ NORMALIZE_CHANNELS = False
 EPS = 1e-8
 
 
-def build_tiff_paths(year: int, months: Sequence[int], input_dir: str) -> list[str]:
-    return [os.path.join(input_dir, f'{FILE_PREFIX}_{year}_{month:02d}.tif') for month in months]
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description='构建 forecasting V2 连续月份序列 X_tensor')
+    parser.add_argument('--input_dir', type=str, default=RAW_DATA_DIR)
+    parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR)
+    parser.add_argument('--years', nargs='+', type=int, default=DEFAULT_YEARS)
+    parser.add_argument('--months', nargs='+', type=int, default=DEFAULT_MONTHS)
+    parser.add_argument('--file_prefix', type=str, default=FILE_PREFIX)
+    parser.add_argument('--patch_size', type=int, default=PATCH_SIZE)
+    parser.add_argument('--stride', type=int, default=STRIDE)
+    parser.add_argument('--nodata_threshold', type=float, default=NODATA_THRESHOLD)
+    parser.add_argument('--normalize_channels', action='store_true')
+    parser.add_argument('--output_prefix', type=str, default='sequence_X')
+    return parser.parse_args()
+
+
+def build_tiff_paths(year: int, months: Sequence[int], input_dir: str, file_prefix: str) -> list[str]:
+    return [os.path.join(input_dir, f'{file_prefix}_{year}_{month:02d}.tif') for month in months]
 
 
 def validate_tiff_paths(tiff_paths: Sequence[str]) -> None:
@@ -29,17 +45,13 @@ def validate_tiff_paths(tiff_paths: Sequence[str]) -> None:
         raise FileNotFoundError(f'以下 TIFF 文件不存在：\n{missing_text}')
 
 
-
 def read_window_with_mask(dataset: rasterio.io.DatasetReader, window: Window) -> tuple[np.ndarray, np.ndarray]:
     data = dataset.read(window=window).astype(np.float32)
     invalid_mask = ~np.isfinite(data)
-
     nodata_value = dataset.nodata
     if nodata_value is not None:
         invalid_mask |= data == nodata_value
-
     return data, invalid_mask
-
 
 
 def normalize_channels_inplace(full_tensor: np.ndarray) -> None:
@@ -48,28 +60,24 @@ def normalize_channels_inplace(full_tensor: np.ndarray) -> None:
         channel_slice = full_tensor[:, :, channel_idx, :, :]
         valid_mask = channel_slice != 0.0
         valid_pixels = channel_slice[valid_mask]
-
         if valid_pixels.size == 0:
-            print(f'⚠️ 波段 {channel_idx} 全是 0，跳过归一化。')
+            print(f'波段 {channel_idx} 全是 0，跳过归一化。')
             continue
-
         mean = valid_pixels.mean()
         std = valid_pixels.std()
         channel_slice[valid_mask] = (valid_pixels - mean) / (std + EPS)
         print(f'波段 {channel_idx} 归一化完成 (mean={mean:.4f}, std={std:.4f})')
 
 
-
 def process_tiffs_to_tensor(
     tiff_paths: Sequence[str],
-    patch_size: int = PATCH_SIZE,
-    stride: int = STRIDE,
-    nodata_threshold: float = NODATA_THRESHOLD,
-    normalize_channels: bool = NORMALIZE_CHANNELS,
+    patch_size: int,
+    stride: int,
+    nodata_threshold: float,
+    normalize_channels: bool,
 ) -> torch.Tensor:
     validate_tiff_paths(tiff_paths)
-    print(f'开始处理 {len(tiff_paths)} 个时相的影像...')
-
+    print(f'开始处理 {len(tiff_paths)} 个连续月份时相...')
     datasets = [rasterio.open(path) for path in tiff_paths]
     try:
         reference = datasets[0]
@@ -78,17 +86,15 @@ def process_tiffs_to_tensor(
 
         for dataset in datasets[1:]:
             if dataset.height != height or dataset.width != width or dataset.count != bands:
-                raise ValueError('输入 TIFF 的空间尺寸或波段数不一致，无法直接堆叠为时间序列。')
+                raise ValueError('输入 TIFF 的空间尺寸或波段数不一致，无法堆叠为连续时间序列。')
 
         valid_patches: list[np.ndarray] = []
         best_invalid_ratio = 1.0
-
         for y in range(0, height - patch_size + 1, stride):
             for x in range(0, width - patch_size + 1, stride):
                 window = Window(x, y, patch_size, patch_size)
                 window_data = []
                 window_invalid_masks = []
-
                 for dataset in datasets:
                     data, invalid_mask = read_window_with_mask(dataset, window)
                     window_data.append(data)
@@ -98,7 +104,6 @@ def process_tiffs_to_tensor(
                 invalid_mask = np.stack(window_invalid_masks, axis=0)
                 invalid_ratio = invalid_mask.mean()
                 best_invalid_ratio = min(best_invalid_ratio, float(invalid_ratio))
-
                 if invalid_ratio > nodata_threshold:
                     continue
 
@@ -108,12 +113,10 @@ def process_tiffs_to_tensor(
         if not valid_patches:
             raise ValueError(
                 '没有提取到有效图块。'
-                f' 当前允许的最大无效像元比例为 {nodata_threshold:.2f}，'
-                f'但扫描到的最佳窗口无效比例也有 {best_invalid_ratio:.4f}。'
+                f' 当前允许最大无效比例={nodata_threshold:.2f}，最佳窗口无效比例={best_invalid_ratio:.4f}。'
             )
 
         full_tensor = np.asarray(valid_patches, dtype=np.float32)
-
         if normalize_channels:
             print('正在按波段对非零像元做归一化...')
             normalize_channels_inplace(full_tensor)
@@ -127,17 +130,26 @@ def process_tiffs_to_tensor(
             dataset.close()
 
 
-if __name__ == '__main__':
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    tiff_files = build_tiff_paths(TARGET_YEAR, TARGET_MONTHS, RAW_DATA_DIR)
-    output_path = os.path.join(OUTPUT_DIR, f'dataset_X_{TARGET_YEAR}.pt')
+def main():
+    args = parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    x_tensor = process_tiffs_to_tensor(
-        tiff_files,
-        patch_size=PATCH_SIZE,
-        stride=STRIDE,
-        nodata_threshold=NODATA_THRESHOLD,
-        normalize_channels=NORMALIZE_CHANNELS,
-    )
-    torch.save(x_tensor, output_path)
-    print(f'X_tensor 已保存至: {output_path}')
+    for year in args.years:
+        print('=' * 80)
+        print(f'开始构建 {year} 年的 forecasting V2 连续月份 X_tensor')
+        tiff_files = build_tiff_paths(year, args.months, args.input_dir, args.file_prefix)
+        x_tensor = process_tiffs_to_tensor(
+            tiff_files=tiff_files,
+            patch_size=args.patch_size,
+            stride=args.stride,
+            nodata_threshold=args.nodata_threshold,
+            normalize_channels=args.normalize_channels,
+        )
+        output_path = os.path.join(args.output_dir, f'{args.output_prefix}_{year}.pt')
+        torch.save(x_tensor, output_path)
+        print(f'已保存: {output_path}')
+        print(f'{year} 年月份序列: {args.months}')
+
+
+if __name__ == '__main__':
+    main()
