@@ -9,7 +9,7 @@ import torch
 
 RAW_DATA_DIR = '/root/autodl-tmp/data_forecast_V2'
 OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data_V2'
-DEFAULT_YEARS = [2021, 2022, 2023, 2024] #, 2025
+DEFAULT_YEARS = [2025] #2021, 2022, 2023, 2024, 2025
 DEFAULT_MONTHS = [4, 5, 6, 7, 8, 9]
 FILE_PREFIX = 'Fused_100m'
 PATCH_SIZE = 128

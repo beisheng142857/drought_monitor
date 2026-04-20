@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-from models.drought.attention import Attention  # 根据你的目录结构修改导入路径
+from models.drought.attention import Attention
 
 class ConvLSTM(nn.Module):
-    #移除了 decoder_params 和 window_out，因为我们只需要对最后时刻输出一张分类图
     def __init__(self, input_size, window_in, num_layers, encoder_params, input_attn_params, device):
         nn.Module.__init__(self)
 
@@ -17,7 +16,6 @@ class ConvLSTM(nn.Module):
         self.num_layers = num_layers
         self.encoder_params = encoder_params
 
-        # 【新增】初始化注意力机制模块
         if input_attn_params is not None:
             self.input_attn = Attention(
                 input_dim=input_attn_params["input_dim"],
@@ -28,47 +26,23 @@ class ConvLSTM(nn.Module):
         else:
             self.input_attn = None
 
-        # 定义 encoder
         self.encoder = self.__define_block(encoder_params)
-
-        # ---------------- 【核心修改】增加干旱等级分类头 ----------------
-        # 提取最后一层隐藏层的通道数
         last_hidden_dim = encoder_params['hidden_dims'][-1]
-        # 获取干旱分类的类别数（默认为4：无旱、轻度、中度、重度）
         self.num_classes = encoder_params.get('num_classes', 4)
-        
-        # 使用 1x1 卷积将隐藏状态映射到干旱等级类别上
         self.classifier_head = nn.Conv2d(
-            in_channels=last_hidden_dim, 
+            in_channels=last_hidden_dim,
             out_channels=self.num_classes,
             kernel_size=1
         )
-        # -------------------------------------------------------------
 
         self.hidden = None
         self.is_trainable = True
     
     def __forward_input_attn(self, x_t, hidden):
-    
-    # x_t: (B, D, H, W)，仅当前时刻输入
-    # hidden: (h, c)
-    # return:
-    #     x_t_attn: (B, D, H, W)
-    #     alpha_tensor: (B, D, H, W)
-    
         if self.input_attn is None:
             return x_t, None
 
-        d_dim = x_t.shape[1]
-        alpha_list = []
-
-        for k in range(d_dim):
-            x_k = x_t[:, k:k + 1, :, :]
-            alpha_k = self.input_attn(x_k, hidden)
-            alpha_list.append(alpha_k)
-
-        alpha_tensor = torch.cat(alpha_list, dim=1)
-
+        alpha_tensor = self.input_attn(x_t, hidden)
         alpha_tensor = torch.sigmoid(alpha_tensor)
         x_t_attn = x_t * (1.0 + alpha_tensor)
 
@@ -87,7 +61,6 @@ class ConvLSTM(nn.Module):
         bias = block_params['bias']
         peephole_con = block_params['peephole_con']
 
-        # 定义模块
         cell_list = []
         for i in range(0, self.num_layers):
             cur_input_dim = input_dim if i == 0 else hidden_dims[i - 1]
@@ -100,24 +73,9 @@ class ConvLSTM(nn.Module):
         return block
 
     def forward(self, x, hidden, **kwargs):
-        """
-        :param x: 5-D tensor of shape (b, t, d, m, n) 即 (Batch, Time, Channel, H, W)
-        :param hidden:
-        :return: (Batch, num_classes, H, W)
-        """
-        # 前向传播 encoder，获取所有层的隐藏状态
         _, cur_states = self.__forward_block(x, hidden, 'encoder', return_all_layers=True)
-
-        # ---------------- 【核心修改】提取特征并分类 ----------------
-        # cur_states 的结构是每一层的 [h_state, c_state]
-        # 我们取最后一层 (cur_states[-1]) 的隐藏状态 h_state (索引0)
-        # 其形状为 (Batch, hidden_dim, Height, Width)
         last_layer_h = cur_states[-1][0]
-
-        # 通过分类头生成干旱等级图
-        # 输出形状为 (Batch, num_classes, Height, Width)
         drought_map = self.classifier_head(last_layer_h)
-
         return drought_map
 
     def __forward_block(self, input_tensor, hidden_state, block_name, return_all_layers):
@@ -131,7 +89,7 @@ class ConvLSTM(nn.Module):
         for layer_idx in range(self.num_layers):
             h, c = hidden_state[layer_idx]
             output_inner = []
-            alphas = []  # 【新增】用于记录注意力权重，方便后续在干旱项目中分析可视化
+            alphas = []
             
             for t in range(seq_len):
                 x_t = cur_layer_input[:, t, :, :, :]
@@ -170,7 +128,6 @@ class ConvLSTM(nn.Module):
 
 
 class ConvLSTMCell(nn.Module):
-    # (保持原样，这部分负责基础的 LSTM 单元运算，不需要修改)
     def __init__(self, input_size, input_dim, hidden_dim,
                  kernel_size, bias, device, peephole_con=False):
         super(ConvLSTMCell, self).__init__()

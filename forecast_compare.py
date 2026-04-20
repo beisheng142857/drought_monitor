@@ -183,7 +183,18 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True); setup_chinese_font(FONT_PATH); device = torch.device(args.device)
     x_path, y_path = resolve_test_paths(args.data_dirs, args.label_mode, args.test_year)
-    x_test, y_test = build_forecast_dataset(torch.load(x_path, map_location='cpu'), torch.load(y_path, map_location='cpu'))
+    # x_test, y_test = build_forecast_dataset(torch.load(x_path, map_location='cpu'), torch.load(y_path, map_location='cpu'))
+    x_test = torch.load(x_path, map_location='cpu')
+    y_test = torch.load(y_path, map_location='cpu')
+    
+    actual_channels = x_test.shape[2]
+    for model_key in model_params:
+        if 'encoder_params' in model_params[model_key]['core']:
+            model_params[model_key]['core']['encoder_params']['input_dim'] = actual_channels
+    print(f'已自动将模型输入通道数(input_dim)自适应调整为: {actual_channels}')
+    
+    print(f'测试集形状: X={x_test.shape}, Y={y_test.shape}')
+
     test_loader = DataLoader(TensorDataset(x_test, y_test), batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=(device.type == 'cuda'))
     results = [evaluate_checkpoint(ckpt, test_loader, device) for ckpt in args.checkpoints if os.path.exists(ckpt)]
     if not results: raise RuntimeError('没有成功评估的预测 checkpoint。')

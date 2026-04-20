@@ -80,7 +80,6 @@ class Trainer:
         return (train_loss, val_loss), best_train_metric, best_val_metric
 
     def evaluate(self, model, batch_generator):
-        """【新增】用于在测试集上评估模型"""
         model = model.to(self.device)
         model.eval()
         with torch.no_grad():
@@ -91,7 +90,6 @@ class Trainer:
         return test_loss, test_metric_scores
     
     def predict(self, model, batch_generator):
-        """【新增】用于输出预测的干旱图，方便后续可视化"""
         model = model.to(self.device)
         model.eval()
         predictions = []
@@ -105,7 +103,7 @@ class Trainer:
                     hidden = None
                 
                 pred = model.forward(x=x, hidden=hidden)
-                pred_classes = torch.argmax(pred, dim=1) # 获取分类结果
+                pred_classes = torch.argmax(pred, dim=1)
                 
                 predictions.append(pred_classes.cpu())
                 targets.append(y.cpu())
@@ -185,15 +183,9 @@ class Trainer:
         loss = self.criterion(pred, y_target).detach().cpu().numpy()
         
         pred_classes = torch.argmax(pred, dim=1)
-        
-        # 提取到 CPU 转为 numpy 以计算高级指标
         y_true_np = y_target.cpu().numpy().flatten()
         y_pred_np = pred_classes.cpu().numpy().flatten()
-        
-        # 计算 Accuracy
         accuracy = (y_true_np == y_pred_np).mean()
-        
-        # 计算 Macro-F1 (综合考虑所有类别的表现，避免大类吃小类)
         macro_f1 = f1_score(y_true_np, y_pred_np, average='macro', zero_division=0)
         
         metric_scores = {

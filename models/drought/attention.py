@@ -33,14 +33,7 @@ class Attention(nn.Module):
         :param tuple of torch.Tensor hidden: ((B, hidden, M, N), (B, hidden, M, N))
         :return: attention energies, (B, 1, M, N)
         """
-        # comb_hid = torch.cat(hidden, dim=1)
-        # dim(hid_conv_out) = (B, attn_dim, m, n)
         hid_conv_out = self.H(hidden[0])
-
-        # dim(in_conv_out) = (B, attn_dim, m, n)
         in_conv_out = self.W(input_tensor)
-
-        # dim(energy) = (B, 1, M, N)
         energy = self.V((hid_conv_out + in_conv_out).tanh())
-
         return energy

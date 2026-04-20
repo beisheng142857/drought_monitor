@@ -1,10 +1,10 @@
 import copy
 import os
 import sys
-from typing import Tuple
+from typing import List
 
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
 code_dir = '/root/autodl-tmp/zyk_drought_monitor'
 if code_dir not in sys.path:
@@ -39,8 +39,54 @@ Y_CANDIDATE_DIRS = [
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
 ]
-# 输出路径
 OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data_V2'
+MAX_SAMPLES_PER_YEAR = None
+DATALOADER_NUM_WORKERS = 4
+PIN_MEMORY = True
+
+
+class YearTensorDataset(Dataset):
+    def __init__(self, x_path: str, y_path: str, max_samples: int | None = None):
+        self.x_path = x_path
+        self.y_path = y_path
+        self.max_samples = max_samples
+        self._x_tensor = None
+        self._y_tensor = None
+        self._length = None
+
+    def _ensure_loaded(self):
+        if self._x_tensor is None or self._y_tensor is None:
+            x_tensor = torch.load(self.x_path, map_location='cpu')
+            y_tensor = torch.load(self.y_path, map_location='cpu')
+
+            if x_tensor.ndim != 5:
+                raise ValueError(f'特征张量应为 (Batch, Time, Channel, H, W)，当前为 {x_tensor.shape}')
+            if y_tensor.ndim != 3:
+                raise ValueError(f'标签张量应为 (Batch, H, W)，当前为 {y_tensor.shape}')
+            if x_tensor.shape[0] != y_tensor.shape[0]:
+                raise ValueError('特征与标签样本数不一致。')
+
+            if self.max_samples is not None and x_tensor.shape[0] > self.max_samples:
+                x_tensor = x_tensor[:self.max_samples]
+                y_tensor = y_tensor[:self.max_samples]
+
+            self._x_tensor = x_tensor.contiguous()
+            self._y_tensor = y_tensor.contiguous()
+            self._length = self._x_tensor.shape[0]
+
+    def __len__(self):
+        if self._length is None:
+            self._ensure_loaded()
+        return self._length
+
+    def __getitem__(self, idx):
+        self._ensure_loaded()
+        return self._x_tensor[idx], self._y_tensor[idx]
+
+    @property
+    def sample_shape(self):
+        self._ensure_loaded()
+        return self._x_tensor.shape, self._y_tensor.shape
 
 
 class SimpleDataWrapper:
@@ -80,13 +126,11 @@ def find_existing_file(candidate_dirs, candidate_names):
     checked_text = '\n'.join(f'  - {path}' for path in checked_paths)
     raise FileNotFoundError(f'未找到任何候选文件，请检查数据路径或文件名：\n{checked_text}')
 
-    #数据头修改forecast_v2 / dataset_X
+
 def resolve_x_path(year: int) -> str:
     candidate_names = [
         f'forecast_v2_X_{year}.pt',
         'forecast_v2_X.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_X_{year}.pt',
-        # f'dataset_X_{year}.pt',
-        # 'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}.pt',
     ]
     return find_existing_file(X_CANDIDATE_DIRS, candidate_names)
 
@@ -96,15 +140,11 @@ def resolve_y_path(year: int, label_mode: str) -> str:
         candidate_names = [
             f'forecast_v2_Y_{year}.pt',
             'forecast_v2_Y.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_Y_{year}.pt',
-            #  f'dataset_Y_{year}.pt',
-            # 'dataset_Y.pt' if year == TRAIN_YEARS[0] else f'dataset_Y_{year}.pt',
         ]
     elif label_mode == 'threshold':
         candidate_names = [
             f'forecast_v2_Y_{year}.pt',
             'forecast_v2_Y.pt',
-            # f'dataset_Y_{year}_threshold.pt',
-            # 'dataset_Y_threshold.pt',
         ]
     else:
         raise ValueError(f'不支持的 LABEL_MODE: {label_mode}')
@@ -112,39 +152,57 @@ def resolve_y_path(year: int, label_mode: str) -> str:
     return find_existing_file(Y_CANDIDATE_DIRS, candidate_names)
 
 
-def load_year_pair(year: int, label_mode: str) -> Tuple[torch.Tensor, torch.Tensor]:
+def load_year_dataset(year: int, label_mode: str, max_samples: int | None = None) -> YearTensorDataset:
     x_path = resolve_x_path(year)
     y_path = resolve_y_path(year, label_mode)
-    print(f'加载 {year} 年特征: {x_path}')
-    print(f'加载 {year} 年标签({label_mode}): {y_path}')
-    
-    forecast_x = torch.load(x_path, map_location='cpu')
-    forecast_y = torch.load(y_path, map_location='cpu')
+    print(f'注册 {year} 年特征: {x_path}')
+    print(f'注册 {year} 年标签({label_mode}): {y_path}')
 
-    MAX_SAMPLES = 1000
-    if forecast_x.shape[0] > MAX_SAMPLES:
-        forecast_x = forecast_x[:MAX_SAMPLES]
-        forecast_y = forecast_y[:MAX_SAMPLES]
-    
-    print(f'已加载 V2 预测样本: X={forecast_x.shape}, Y={forecast_y.shape}')
-    return forecast_x, forecast_y
+    dataset = YearTensorDataset(x_path=x_path, y_path=y_path, max_samples=max_samples)
+    x_shape, y_shape = dataset.sample_shape
+    print(f'已注册 V2 预测样本: X={x_shape}, Y={y_shape}')
+    return dataset
 
 
-def compute_class_weights(y_train: torch.Tensor, device: torch.device) -> torch.Tensor:
-    all_labels = y_train.flatten().long()
-    class_counts = torch.bincount(all_labels, minlength=4)
+def build_concat_dataset(years: List[int], label_mode: str, max_samples: int | None = None) -> Dataset:
+    datasets = [load_year_dataset(year, label_mode, max_samples=max_samples) for year in years]
+    if len(datasets) == 1:
+        return datasets[0]
+    return ConcatDataset(datasets)
+
+
+def infer_actual_channels(dataset: Dataset) -> int:
+    first_x, _ = dataset[0]
+    return first_x.shape[1]
+
+
+def compute_class_weights_from_dataset(dataset: Dataset, device: torch.device, num_classes: int = 4) -> torch.Tensor:
+    class_counts = torch.zeros(num_classes, dtype=torch.long)
+    for _, y in dataset:
+        class_counts += torch.bincount(y.long().flatten(), minlength=num_classes)
     class_counts = torch.clamp(class_counts, min=1)
-    class_weights = len(all_labels) / (len(class_counts) * class_counts.float())
+    total = class_counts.sum().item()
+    class_weights = total / (num_classes * class_counts.float())
     return class_weights.to(device)
 
 
-def build_model(active_model: str, device: torch.device):
+def build_dataloader(dataset: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=DATALOADER_NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+    )
+
+
+def build_model(active_model: str, device: torch.device, actual_channels: int):
     if active_model in ['convlstm_attn', 'convlstm_no_attn']:
         model_config = copy.deepcopy(model_params['convlstm'])
         model_config['core']['window_in'] = FORECAST_INPUT_STEPS
         use_attention = active_model == 'convlstm_attn'
         if use_attention:
-            model_config['core']['input_attn_params']['input_dim'] = 1
+            model_config['core']['input_attn_params']['input_dim'] = actual_channels
             input_attn_params = model_config['core']['input_attn_params']
         else:
             input_attn_params = None
@@ -196,34 +254,32 @@ def main():
     print(f'标签方案: {LABEL_MODE}')
     print(f'预测设定: 输入前 {FORECAST_INPUT_STEPS} 个月，预测第 {FORECAST_TARGET_MONTH_INDEX + 1} 个月旱情')
 
-    train_pairs = [load_year_pair(year, LABEL_MODE) for year in TRAIN_YEARS]
-    x_train = torch.cat([pair[0] for pair in train_pairs], dim=0)
-    y_train = torch.cat([pair[1] for pair in train_pairs], dim=0)
-    x_val, y_val = load_year_pair(VAL_YEAR, LABEL_MODE)
-    x_test, y_test = load_year_pair(TEST_YEAR, LABEL_MODE)
+    train_dataset = build_concat_dataset(TRAIN_YEARS, LABEL_MODE, max_samples=MAX_SAMPLES_PER_YEAR)
+    val_dataset = load_year_dataset(VAL_YEAR, LABEL_MODE, max_samples=MAX_SAMPLES_PER_YEAR)
+    test_dataset = load_year_dataset(TEST_YEAR, LABEL_MODE, max_samples=MAX_SAMPLES_PER_YEAR)
 
-    print(f'训练集形状: X={x_train.shape}, Y={y_train.shape}')
-    print(f'验证集形状: X={x_val.shape}, Y={y_val.shape}')
-    print(f'测试集形状: X={x_test.shape}, Y={y_test.shape}')
+    print(f'训练集样本数: {len(train_dataset)}')
+    print(f'验证集样本数: {len(val_dataset)}')
+    print(f'测试集样本数: {len(test_dataset)}')
 
-    train_loader = DataLoader(TensorDataset(x_train, y_train), batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(TensorDataset(x_val, y_val), batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(TensorDataset(x_test, y_test), batch_size=BATCH_SIZE, shuffle=False)
+    train_loader = build_dataloader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = build_dataloader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = build_dataloader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
     batch_generator = SimpleDataWrapper(train_loader, val_loader, test_loader)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'当前使用计算设备: {device}')
 
-    actual_channels = x_train.shape[2]
+    actual_channels = infer_actual_channels(train_dataset)
     for model_key in ['convlstm', 'convgru', 'traj_gru']:
         model_params[model_key]['core']['encoder_params']['input_dim'] = actual_channels
     print(f'已自动将模型输入通道数自适应调整为: {actual_channels}')
 
     print('正在计算损失函数类别权重...')
-    class_weights = compute_class_weights(y_train, device)
+    class_weights = compute_class_weights_from_dataset(train_dataset, device)
     print(f'各干旱等级权重: {class_weights.cpu().numpy()}')
 
-    model, model_config, save_name, model_name = build_model(ACTIVE_MODEL, device)
+    model, model_config, save_name, model_name = build_model(ACTIVE_MODEL, device, actual_channels)
     trainer_config = model_config['trainer']
     trainer = Trainer(
         num_epochs=trainer_config['num_epochs'],
