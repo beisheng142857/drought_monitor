@@ -33,6 +33,8 @@ class Attention(nn.Module):
             bias=False,
         )
 
+        self.saved_attn_weights = None
+
     def forward(self, input_tensor, hidden):
         """
         :param torch.Tensor input_tensor: (B, D, H, W)
@@ -42,4 +44,8 @@ class Attention(nn.Module):
         hid_conv_out = self.H(hidden[0])
         in_conv_out = self.W(input_tensor)
         energy = self.V((hid_conv_out + in_conv_out).tanh())
+
+        # 使用 detach() 从计算图中分离，cpu() 放到内存，numpy() 转成数组
+        self.saved_attn_weights = energy.detach().cpu().numpy()
+        
         return energy

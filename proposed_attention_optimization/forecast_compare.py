@@ -8,10 +8,20 @@ from matplotlib import font_manager
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader, TensorDataset
 
-code_dir = '/root/autodl-tmp/zyk_drought_monitor'
-if code_dir not in sys.path:
-    sys.path.append(code_dir)
-os.chdir(code_dir)
+import os
+import sys
+
+# 1. 优先加载新文件夹（确保加载的是魔改后的新版 models/attention.py）
+new_code_dir = '/root/autodl-tmp/zyk_drought_monitor/proposed_attention_optimization'
+if new_code_dir not in sys.path:
+    sys.path.insert(0, new_code_dir)  # 用 insert(0) 放在第一位，优先级最高
+
+# 2. 其次加载根目录（为了能找到共用的 configs 文件夹）
+root_dir = '/root/autodl-tmp/zyk_drought_monitor'
+if root_dir not in sys.path:
+    sys.path.append(root_dir)         # 放在后面作为备用路径
+
+os.chdir(new_code_dir)
 
 from configs.config import model_params
 from models.baseline.convgru import ConvGRU
@@ -180,7 +190,9 @@ def main():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--data_dirs', nargs='+', default=['/root/autodl-tmp/zyk_drought_monitor/data_V2', '/root/autodl-tmp/data_proc', '/root/autodl-tmp/data_proc/data_proc', '/content/drive/MyDrive/GEE_Drought_Project/data_proc', '/content/drive/MyDrive/drought_monitor/data_proc'])
     parser.add_argument('--checkpoints', nargs='+', required=True)
-    parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/V2_1')      # 新文件保存位置记录
+    
+    # 新文件保存位置记录
+    parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/V2_1')     
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True); setup_chinese_font(FONT_PATH); device = torch.device(args.device)
     x_path, y_path = resolve_test_paths(args.data_dirs, args.label_mode, args.test_year)
