@@ -244,7 +244,7 @@ def build_model(active_model: str, device: torch.device, actual_channels: int):
     else:
         raise ValueError('当前预测任务支持: convlstm_attn、convlstm_no_attn、convgru、traj_gru。')
 
-    save_name = f'drought_forecast_{model_name}_best_{LABEL_MODE}.pth'
+    save_name = f'drought_forecast_{model_name}_best_{LABEL_MODE}_proposed.pth'
     return model, model_config, save_name, model_name
 
 

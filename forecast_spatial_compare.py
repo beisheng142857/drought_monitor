@@ -142,6 +142,8 @@ def main():
     for model_key in model_params:
         if 'encoder_params' in model_params[model_key]['core']:
             model_params[model_key]['core']['encoder_params']['input_dim'] = actual_channels
+        if 'attention_params' in model_params[model_key]['core']:
+            model_params[model_key]['core']['input_attn_params']['input_dim'] = actual_channels
     print(f'已自动将模型输入通道数(input_dim)自适应调整为: {actual_channels}')
 
     if args.sample_index < 0 or args.sample_index >= x_all.shape[0]:
