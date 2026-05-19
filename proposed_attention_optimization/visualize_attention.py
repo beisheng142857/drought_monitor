@@ -12,9 +12,20 @@ if os.path.exists(FONT_PATH):
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
 
-# 假设你的 10 个通道分别是这些（请根据你 data_V2 的实际情况修改！）
-FEATURE_NAMES = ['NDVI', 'VV', 'VH', 'VVVH', '降水(PRE)', '气温(TMP)', '土壤湿度(SM)', '地表温度(LST)', '蒸散发(ET)', '高程(DEM)']
-
+# NDVI (Normalized Difference Vegetation Index - 归一化植被指数)
+# EVI (Enhanced Vegetation Index - 增强型植被指数)
+# NDMI (Normalized Difference Moisture Index - 归一化水分指数，对土壤/植被水分极其敏感)
+# NDWI (Normalized Difference Water Index - 归一化水体指数)
+# MSAVI (Modified Soil Adjusted Vegetation Index - 修正土壤调节植被指数)
+# VV (Sentinel-1 雷达 VV 极化后向散射)
+# VH (Sentinel-1 雷达 VH 极化后向散射)
+# VVVH (VV 和 VH 的比值，常用于监测植被结构和生物量)
+# VVDIFFVH (VV 和 VH 的差值)
+# RVI (Radar Vegetation Index - 雷达植被指数)
+FEATURE_NAMES = [
+    'NDVI', 'EVI', 'NDMI', 'NDWI', 'MSAVI', 
+    'VV', 'VH', 'VV/VH', 'VV-VH', 'RVI'
+]
 def plot_channel_attention(attn_weights, save_path="channel_attention.png"):
     """
     绘制通道注意力权重柱状图

@@ -1,0 +1,57 @@
+================================================================================
+Rank 1: convlstm_attn
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/V2_1/drought_forecast_convlstm_attn_best_threshold_proposed.pth
+Loss: 0.850035
+Accuracy: 0.669605
+Macro-F1: 0.610034
+Weighted-F1: 0.693081
+
+              precision    recall  f1-score   support
+
+          无旱     0.9088    0.6678    0.7699  77741605
+          轻旱     0.3585    0.6030    0.4497  18693818
+          中旱     0.5147    0.7503    0.6105  17204001
+        重/特旱     0.0000    0.0000    0.0000         0
+
+    accuracy                         0.6696 113639424
+   macro avg     0.4455    0.5053    0.4575 113639424
+weighted avg     0.7586    0.6696    0.6931 113639424
+
+================================================================================
+Rank 2: convlstm_no_attn
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/V2_0/drought_forecast_convlstm_no_attn_best_threshold.pth
+Loss: 0.988825
+Accuracy: 0.632173
+Macro-F1: 0.563741
+Weighted-F1: 0.657948
+
+              precision    recall  f1-score   support
+
+          无旱     0.8946    0.6356    0.7432  77741605
+          轻旱     0.4056    0.5229    0.4569  18693818
+          中旱     0.3687    0.7352    0.4911  17204001
+        重/特旱     0.0000    0.0000    0.0000         0
+
+    accuracy                         0.6322 113639424
+   macro avg     0.4172    0.4734    0.4228 113639424
+weighted avg     0.7346    0.6322    0.6579 113639424
+
+================================================================================
+Rank 3: convgru
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/V2_0/drought_forecast_convgru_best_threshold.pth
+Loss: 1.022197
+Accuracy: 0.565880
+Macro-F1: 0.391169
+Weighted-F1: 0.597618
+
+              precision    recall  f1-score   support
+
+          无旱     0.9257    0.5207    0.6665  77741605
+          轻旱     0.3537    0.5617    0.4341  18693818
+          中旱     0.3313    0.7746    0.4641  17204001
+        重/特旱     0.0000    0.0000    0.0000         0
+
+    accuracy                         0.5659 113639424
+   macro avg     0.4027    0.4642    0.3912 113639424
+weighted avg     0.7416    0.5659    0.5976 113639424
+

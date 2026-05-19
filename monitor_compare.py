@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 import sys
 from typing import Dict, List, Tuple
@@ -50,11 +51,15 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 
 def resolve_test_paths(data_dirs: List[str], label_mode: str, test_year: int) -> Tuple[str, str]:
-    x_path = find_existing_file(data_dirs, [f'dataset_X_{test_year}.pt'])
+    x_candidates = [f'dataset_X_{test_year}_new.pt']
+    x_path = find_existing_file(data_dirs, x_candidates)
     if label_mode == 'threshold':
-        y_candidates = [f'dataset_Y_{test_year}_threshold.pt', 'dataset_Y_threshold.pt']
+        y_candidates = [
+            f'dataset_Y_{test_year}_new_threshold.pt',
+            'dataset_Y_threshold.pt',
+        ]
     else:
-        y_candidates = [f'dataset_Y_{test_year}.pt', 'dataset_Y.pt']
+        y_candidates = [f'dataset_Y_{test_year}.pt', f'dataset_Y_{test_year}_new.pt', 'dataset_Y.pt']
     y_path = find_existing_file(data_dirs, y_candidates)
     return x_path, y_path
 
@@ -72,10 +77,23 @@ def infer_model_type_from_ckpt(ckpt_path: str) -> str:
     raise ValueError(f'无法从文件名推断模型类型，请显式重命名或修改脚本: {ckpt_path}')
 
 
-def build_model(model_type: str, device: torch.device):
+def build_monitor_input(x_tensor: torch.Tensor, required_steps: int) -> torch.Tensor:
+    if x_tensor.ndim != 5:
+        raise ValueError(f'X_tensor 形状应为 (Batch, Time, Channels, H, W)，当前为 {x_tensor.shape}')
+    if x_tensor.shape[1] < required_steps:
+        raise ValueError(f'当前时间步数为 {x_tensor.shape[1]}，少于模型需要的 {required_steps} 个时间步。')
+    return x_tensor[:, -required_steps:, :, :, :].contiguous()
+
+
+
+def build_model(model_type: str, device: torch.device, actual_channels: int, window_in: int):
     if model_type in ['convlstm_attn', 'convlstm_no_attn']:
-        cfg = model_params['convlstm']['core']
-        input_attn_params = cfg['input_attn_params'] if model_type == 'convlstm_attn' else None
+        cfg = copy.deepcopy(model_params['convlstm']['core'])
+        cfg['window_in'] = window_in
+        cfg['encoder_params']['input_dim'] = actual_channels
+        input_attn_params = copy.deepcopy(cfg['input_attn_params']) if model_type == 'convlstm_attn' else None
+        if input_attn_params is not None:
+            input_attn_params['input_dim'] = 1
         model = ConvLSTM(
             input_size=cfg['input_size'],
             window_in=cfg['window_in'],
@@ -85,7 +103,9 @@ def build_model(model_type: str, device: torch.device):
             device=device,
         )
     elif model_type == 'convgru':
-        cfg = model_params['convgru']['core']
+        cfg = copy.deepcopy(model_params['convgru']['core'])
+        cfg['window_in'] = window_in
+        cfg['encoder_params']['input_dim'] = actual_channels
         model = ConvGRU(
             input_size=cfg['input_size'],
             window_in=cfg['window_in'],
@@ -95,7 +115,9 @@ def build_model(model_type: str, device: torch.device):
             device=device,
         )
     elif model_type == 'traj_gru':
-        cfg = model_params['traj_gru']['core']
+        cfg = copy.deepcopy(model_params['traj_gru']['core'])
+        cfg['window_in'] = window_in
+        cfg['encoder_params']['input_dim'] = actual_channels
         model = TrajGRU(
             input_size=cfg['input_size'],
             window_in=cfg['window_in'],
@@ -120,9 +142,14 @@ def load_state_dict(path: str) -> Dict[str, torch.Tensor]:
     raise ValueError(f'无法识别 checkpoint 格式: {path}')
 
 
-def load_model_from_checkpoint(ckpt_path: str, device: torch.device):
+def load_model_from_checkpoint(
+    ckpt_path: str,
+    device: torch.device,
+    actual_channels: int,
+    window_in: int,
+):
     model_type = infer_model_type_from_ckpt(ckpt_path)
-    model = build_model(model_type, device)
+    model = build_model(model_type, device, actual_channels, window_in)
     state_dict = load_state_dict(ckpt_path)
     model.load_state_dict(state_dict, strict=False)
     model.eval()
@@ -135,8 +162,14 @@ def normalize_rows(cm: np.ndarray) -> np.ndarray:
     return cm / row_sums
 
 
-def evaluate_checkpoint(ckpt_path: str, test_loader: DataLoader, device: torch.device) -> Dict[str, object]:
-    model, model_type = load_model_from_checkpoint(ckpt_path, device)
+def evaluate_checkpoint(
+    ckpt_path: str,
+    test_loader: DataLoader,
+    device: torch.device,
+    actual_channels: int,
+    window_in: int,
+) -> Dict[str, object]:
+    model, model_type = load_model_from_checkpoint(ckpt_path, device, actual_channels, window_in)
     criterion = nn.CrossEntropyLoss()
 
     all_preds = []
@@ -281,6 +314,7 @@ def main():
             '/root/autodl-tmp/data_proc/data_proc',
             '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
             '/content/drive/MyDrive/drought_monitor/data_proc',
+            '/root/autodl-tmp/zyk_drought_monitor/data/data_proc'
         ],
     )
     parser.add_argument(
@@ -305,6 +339,10 @@ def main():
     print(f'加载测试标签: {y_path}')
     x_test = torch.load(x_path, map_location='cpu')
     y_test = torch.load(y_path, map_location='cpu')
+    common_input_steps = min(model_params['convlstm']['core']['window_in'], x_test.shape[1])
+    x_test = build_monitor_input(x_test, common_input_steps)
+    actual_channels = x_test.shape[2]
+    print(f'测试集按 {common_input_steps} 个时间步评估，输入通道数: {actual_channels}')
 
     test_loader = DataLoader(
         TensorDataset(x_test, y_test),
@@ -319,7 +357,7 @@ def main():
         if not os.path.exists(ckpt):
             print(f'[SKIP] 文件不存在: {ckpt}')
             continue
-        result = evaluate_checkpoint(ckpt, test_loader, device)
+        result = evaluate_checkpoint(ckpt, test_loader, device, actual_channels, common_input_steps)
         results.append(result)
         print(
             f"[OK] {result['model_type']} | Loss={result['loss']:.6f}, "

@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 from typing import Tuple
@@ -16,7 +17,7 @@ from models.baseline.traj_gru import TrajGRU # TrajGRU
 from trainer import Trainer
 from configs.config import model_params
 
-ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+ACTIVE_MODEL = 'convlstm_no_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
 LABEL_MODE = 'threshold'        # 可选: 'kmeans' 或 'threshold'
 BATCH_SIZE = 16
 TRAIN_YEARS = [2021, 2022, 2023]
@@ -27,12 +28,14 @@ X_CANDIDATE_DIRS = [
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
+    '/root/autodl-tmp/zyk_drought_monitor/data/data_proc',
 ]
 Y_CANDIDATE_DIRS = [
     '/root/autodl-tmp/data_proc',
     '/root/autodl-tmp/data_proc/data_proc',
     '/content/drive/MyDrive/GEE_Drought_Project/data_proc',
     '/content/drive/MyDrive/drought_monitor/data_proc',
+    '/root/autodl-tmp/zyk_drought_monitor/data/data_proc',
 ]
 OUTPUT_DIR = '/root/autodl-tmp/zyk_drought_monitor/data'
 
@@ -79,8 +82,8 @@ def find_existing_file(candidate_dirs, candidate_names):
 
 def resolve_x_path(year: int) -> str:
     candidate_names = [
-        f'dataset_X_{year}.pt',
-        'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}.pt',
+        f'dataset_X_{year}_new.pt',
+        'dataset_X.pt' if year == TRAIN_YEARS[0] else f'dataset_X_{year}_new.pt',
     ]
     return find_existing_file(X_CANDIDATE_DIRS, candidate_names)
 
@@ -89,12 +92,12 @@ def resolve_x_path(year: int) -> str:
 def resolve_y_path(year: int, label_mode: str) -> str:
     if label_mode == 'kmeans':
         candidate_names = [
-            f'dataset_Y_{year}.pt',
-            'dataset_Y.pt' if year == TRAIN_YEARS[0] else f'dataset_Y_{year}.pt',
+            f'dataset_Y_{year}_new.pt',
+            'dataset_Y.pt' if year == TRAIN_YEARS[0] else f'dataset_Y_{year}_new.pt',
         ]
     elif label_mode == 'threshold':
         candidate_names = [
-            f'dataset_Y_{year}_threshold.pt',
+            f'dataset_Y_{year}_new_threshold.pt',
             'dataset_Y_threshold.pt',
         ]
     else:
@@ -111,7 +114,23 @@ def load_year_pair(year: int, label_mode: str) -> Tuple[torch.Tensor, torch.Tens
     print(f'加载 {year} 年标签({label_mode}): {y_path}')
     x_tensor = torch.load(x_path, map_location='cpu')
     y_tensor = torch.load(y_path, map_location='cpu')
+    x_tensor = build_monitor_input(x_tensor)
     return x_tensor, y_tensor
+
+
+
+def build_monitor_input(x_tensor: torch.Tensor) -> torch.Tensor:
+    if x_tensor.ndim != 5:
+        raise ValueError(f'X_tensor 形状应为 (Batch, Time, Channels, H, W)，当前为 {x_tensor.shape}')
+    if x_tensor.shape[1] < model_params['convlstm']['core']['window_in']:
+        raise ValueError(
+            f'当前时间步数为 {x_tensor.shape[1]}，少于监测模型需要的 {model_params["convlstm"]["core"]["window_in"]} 个时间步。'
+        )
+
+    required_steps = model_params['convlstm']['core']['window_in']
+    # 当前每年有 4-9 月共 6 个时间步，这里默认取最后 5 个月作为监测输入
+    return x_tensor[:, -required_steps:, :, :, :].contiguous()
+    #return x_tensor[:, :required_steps, :, :, :].contiguous()
 
 
 
@@ -124,11 +143,14 @@ def compute_class_weights(y_train: torch.Tensor, device: torch.device) -> torch.
 
 
 
-def build_model(active_model: str, device: torch.device):
+def build_model(active_model: str, device: torch.device, actual_channels: int):
     if active_model in ['convlstm_attn', 'convlstm_no_attn']:
-        model_config = model_params['convlstm']
+        model_config = copy.deepcopy(model_params['convlstm'])
+        model_config['core']['encoder_params']['input_dim'] = actual_channels
         use_attention = active_model == 'convlstm_attn'
-        input_attn_params = model_config['core']['input_attn_params'] if use_attention else None
+        input_attn_params = copy.deepcopy(model_config['core']['input_attn_params']) if use_attention else None
+        if input_attn_params is not None:
+            input_attn_params['input_dim'] = 1
         model = ConvLSTM(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -140,7 +162,8 @@ def build_model(active_model: str, device: torch.device):
         model_name = 'convlstm_attn' if use_attention else 'convlstm_no_attn'
         save_name = f'drought_{model_name}_best_{LABEL_MODE}.pth'
     elif active_model == 'convgru':
-        model_config = model_params['convgru']
+        model_config = copy.deepcopy(model_params['convgru'])
+        model_config['core']['encoder_params']['input_dim'] = actual_channels
         model = ConvGRU(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -152,7 +175,8 @@ def build_model(active_model: str, device: torch.device):
         model_name = 'convgru'
         save_name = f'drought_{model_name}_best_{LABEL_MODE}.pth'
     elif active_model == 'traj_gru':
-        model_config = model_params['traj_gru']
+        model_config = copy.deepcopy(model_params['traj_gru'])
+        model_config['core']['encoder_params']['input_dim'] = actual_channels
         model = TrajGRU(
             input_size=model_config['core']['input_size'],
             window_in=model_config['core']['window_in'],
@@ -188,6 +212,9 @@ def main():
     print(f'验证集形状: X={x_val.shape}, Y={y_val.shape}')
     print(f'测试集形状: X={x_test.shape}, Y={y_test.shape}')
 
+    actual_channels = x_train.shape[2]
+    print(f'当前监测输入通道数: {actual_channels}')
+
     train_loader = DataLoader(TensorDataset(x_train, y_train), batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(TensorDataset(x_val, y_val), batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(TensorDataset(x_test, y_test), batch_size=BATCH_SIZE, shuffle=False)
@@ -200,7 +227,7 @@ def main():
     class_weights = compute_class_weights(y_train, device)
     print(f'各干旱等级权重: {class_weights.cpu().numpy()}')
 
-    model, model_config, save_name, model_name = build_model(ACTIVE_MODEL, device)
+    model, model_config, save_name, model_name = build_model(ACTIVE_MODEL, device, actual_channels)
     trainer_config = model_config['trainer']
     trainer = Trainer(
         num_epochs=trainer_config['num_epochs'],

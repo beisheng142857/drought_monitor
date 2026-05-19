@@ -1,0 +1,33 @@
+================ 注意力机制消融实验摘要 ================
+Base checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/drought_forecast_convlstm_no_attn_best_threshold_proposed.pth
+Ours checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/drought_forecast_convlstm_attn_best_threshold_proposed.pth
+
+Base -> Loss=1.467039, Accuracy=0.460167, Macro-F1=0.366375, Weighted-F1=0.461178
+Ours -> Loss=1.478928, Accuracy=0.462193, Macro-F1=0.371867, Weighted-F1=0.461650
+Delta -> Loss=+0.011889, Accuracy=+0.002026, Macro-F1=+0.005493, Weighted-F1=+0.000472
+
+[Base report]
+              precision    recall  f1-score   support
+
+          无旱     0.7980    0.2792    0.4137  60661089
+          轻旱     0.4395    0.6341    0.5191  34933191
+          中旱     0.3932    0.7305    0.5112  17946609
+        重/特旱     0.0108    0.9529    0.0214     98535
+
+    accuracy                         0.4602 113639424
+   macro avg     0.4104    0.6492    0.3664 113639424
+weighted avg     0.6232    0.4602    0.4612 113639424
+
+
+[Ours report]
+              precision    recall  f1-score   support
+
+          无旱     0.8018    0.2709    0.4050  60661089
+          轻旱     0.4238    0.6689    0.5189  34933191
+          中旱     0.4436    0.7036    0.5441  17946609
+        重/特旱     0.0098    0.9506    0.0194     98535
+
+    accuracy                         0.4622 113639424
+   macro avg     0.4198    0.6485    0.3719 113639424
+weighted avg     0.6284    0.4622    0.4617 113639424
+

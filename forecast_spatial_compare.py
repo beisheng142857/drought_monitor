@@ -129,7 +129,7 @@ def main():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--data_dirs', nargs='+', default=['/root/autodl-tmp/data_proc', '/root/autodl-tmp/data_proc/data_proc', '/content/drive/MyDrive/GEE_Drought_Project/data_proc', '/content/drive/MyDrive/drought_monitor/data_proc'])
     parser.add_argument('--checkpoints', nargs='+', required=True)
-    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/forecast_spatial_prediction_compare.png')
+    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/5_10/forecast_spatial_prediction_compare.png')
     args = parser.parse_args()
     setup_chinese_font(FONT_PATH)
     device = torch.device(args.device)

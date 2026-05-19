@@ -1,0 +1,38 @@
+================================================================================
+Rank 1: convgru
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data/drought_forecast_convgru_best_threshold.pth
+Loss: 1.407673
+Accuracy: 0.418265
+Macro-F1: 0.338127
+Weighted-F1: 0.431498
+
+              precision    recall  f1-score   support
+
+          无旱     0.5178    0.4238    0.4661    286821
+          轻旱     0.3936    0.2723    0.3219    228440
+          中旱     0.4695    0.6439    0.5430    139098
+        重/特旱     0.0109    0.7792    0.0214      1001
+
+    accuracy                         0.4183    655360
+   macro avg     0.3479    0.5298    0.3381    655360
+weighted avg     0.4635    0.4183    0.4315    655360
+
+================================================================================
+Rank 2: convlstm_no_attn
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data/drought_forecast_convlstm_no_attn_best_threshold.pth
+Loss: 1.411368
+Accuracy: 0.386368
+Macro-F1: 0.310784
+Weighted-F1: 0.394084
+
+              precision    recall  f1-score   support
+
+          无旱     0.5340    0.3030    0.3866    286821
+          轻旱     0.3668    0.3782    0.3724    228440
+          中旱     0.3690    0.5687    0.4476    139098
+        重/特旱     0.0187    0.7962    0.0365      1001
+
+    accuracy                         0.3864    655360
+   macro avg     0.3221    0.5115    0.3108    655360
+weighted avg     0.4399    0.3864    0.3941    655360
+

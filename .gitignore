@@ -1,24 +1,53 @@
-.idea
+.idea/
 .coverage
 
 __pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# 本地环境
+.venv/
+venv/
+env/
 
 # data 默认不上传（仅保留占位）
 data/*
 !data/.gitkeep
 
-# results 与可视化结果允许上传
-!drought_outputs/
-!drought_outputs/**
+# 训练/推理生成的数据与中间产物
+data_V2/
 
+# 结果目录默认不上传（仅保留占位）
 results/*
 !results/.gitkeep
-!results/model_compare/
-!results/model_compare/**
+!results/forecast_compare/
+!results/forecast_compare/**
+!results/forecast_compare_V2/
+!results/forecast_compare_V2/**
+!results/forecast_ablation/
+!results/forecast_ablation/**
 
+# 结果目录内仍忽略大中间产物
+results/**/frames/
+results/**/*.gif
+results/**/temp/
+
+# 可视化输出与业务图层结果不上传
+drought_outputs/
 figures/*
 !figures/.gitkeep
+comparison_result.png
 
-.ipynb_checkpoints/
+# 常见模型与缓存产物
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.joblib
+*.npz
 
-data_V2/
+# 压缩包与临时大文件
+*.zip
+*.tar
+*.tar.gz
+*.gz

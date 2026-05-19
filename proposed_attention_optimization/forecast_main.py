@@ -6,16 +6,18 @@ from typing import List
 import torch
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
-code_dir = '/root/autodl-tmp/zyk_drought_monitor'
-if code_dir not in sys.path:
-    sys.path.append(code_dir)
-os.chdir(code_dir)
+project_root = '/root/autodl-tmp/zyk_drought_monitor'
+proposed_root = '/root/autodl-tmp/zyk_drought_monitor/proposed_attention_optimization'
+for path in [project_root, proposed_root]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+os.chdir(project_root)
 
 from configs.config import model_params
 from models.baseline.convgru import ConvGRU
-from models.baseline.convlstm import ConvLSTM
 from models.baseline.traj_gru import TrajGRU
-from trainer import Trainer
+from proposed_attention_optimization.models.baseline.convlstm import ConvLSTM
+from proposed_attention_optimization.trainer import Trainer
 
 ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
 LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'

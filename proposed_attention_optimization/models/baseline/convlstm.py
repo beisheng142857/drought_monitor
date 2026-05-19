@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-from models.drought.attention import Attention
+from proposed_attention_optimization.models.drought.attention import Attention
 
 class ConvLSTM(nn.Module):
     def __init__(self, input_size, window_in, num_layers, encoder_params, input_attn_params, device):

@@ -109,23 +109,45 @@ def process_tiffs_to_tensor(tiff_paths, patch_size=128, stride=128, nodata_thres
 # 第三步：执行转换并保存至云盘
 # ==========================================
 
-# 记得保留你刚才修改好的真实云盘路径
-base_dir = '/content/drive/MyDrive/GEE_Drought_Project'
-fin_dir = '/content/drive/MyDrive/drought_monitor'
+# 当前 10 通道特征顺序需与 gee_downloader.py 导出顺序保持一致：
+# 0: NDVI
+# 1: EVI
+# 2: NDMI
+# 3: NDWI
+# 4: MSAVI
+# 5: VV
+# 6: VH
+# 7: VVVH
+# 8: VVDIFFVH
+# 9: RVI
+
+base_dir = '/root/autodl-tmp/data_forecast_V2'
+fin_dir = '/root/autodl-tmp/zyk_drought_monitor/data'
 output_dir = os.path.join(fin_dir, 'data_proc')
 os.makedirs(output_dir, exist_ok=True)
 
-tiff_files = [
-    os.path.join(base_dir, 'Fused_100m_2025_05.tif'),
-    os.path.join(base_dir, 'Fused_100m_2025_06.tif'),
-    os.path.join(base_dir, 'Fused_100m_2025_07.tif'),
-    os.path.join(base_dir, 'Fused_100m_2025_08.tif'),
-    os.path.join(base_dir, 'Fused_100m_2025_09.tif')
-]
+YEARS = [2021, 2022, 2023, 2024, 2025]
+MONTHS = [4, 5, 6, 7, 8, 9]
+PATCH_SIZE = 128
+STRIDE = 128
+NODATA_THRESHOLD = 0.1
+NORMALIZE_CHANNELS = False
 
-X_tensor = process_tiffs_to_tensor(tiff_files, patch_size=128, stride=128, nodata_threshold=0.1, normalize_channels=False)
+for year in YEARS:
+    tiff_files = [
+        os.path.join(base_dir, f'Fused_100m_{year}_{month:02d}.tif')
+        for month in MONTHS
+    ]
 
-save_path = os.path.join(output_dir, 'dataset_X_2025.pt')
-torch.save(X_tensor, save_path)
+    print(f'\n===== 开始处理 {year} 年 {MONTHS[0]}-{MONTHS[-1]} 月数据 =====')
+    X_tensor = process_tiffs_to_tensor(
+        tiff_files,
+        patch_size=PATCH_SIZE,
+        stride=STRIDE,
+        nodata_threshold=NODATA_THRESHOLD,
+        normalize_channels=NORMALIZE_CHANNELS,
+    )
 
-print(f"张量已成功保存至云盘: {save_path}")
+    save_path = os.path.join(output_dir, f'dataset_X_{year}_new.pt')
+    torch.save(X_tensor, save_path)
+    print(f'{year} 年张量已成功保存: {save_path}')

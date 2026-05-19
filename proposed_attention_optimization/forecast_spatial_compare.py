@@ -142,7 +142,7 @@ def main():
     parser.add_argument('--checkpoints', nargs='+', required=True)
     
     # 新文件保存位置记录
-    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/V2_1/forecast_spatial_prediction_compare.png')   
+    parser.add_argument('--output_path', type=str, default='/root/autodl-tmp/zyk_drought_monitor/results/forecast_compare_V2/5_10/forecast_spatial_prediction_compare.png')   
     args = parser.parse_args()
     setup_chinese_font(FONT_PATH)
     device = torch.device(args.device)

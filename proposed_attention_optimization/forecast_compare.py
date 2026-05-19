@@ -11,6 +11,28 @@ from torch.utils.data import DataLoader, TensorDataset
 import os
 import sys
 
+FEATURE_NAMES = [
+    'NDVI', 'EVI', 'NDMI', 'NDWI', 'MSAVI', 
+    'VV', 'VH', 'VV/VH', 'VV-VH', 'RVI'
+]
+
+def plot_channel_weights(attn_weights, save_path="attention_weights_demo.png"):
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(FEATURE_NAMES, attn_weights, color='skyblue', edgecolor='black')
+    
+    # 标红权重最高的前三名
+    top3_indices = np.argsort(attn_weights)[-3:]
+    for idx in top3_indices:
+        bars[idx].set_color('coral')
+        
+    plt.title('ConvLSTM Attention Feature Weights', fontsize=16)
+    plt.ylabel('Attention Score', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    print(f"✅ 注意力权重图已成功保存至: {save_path}")
+    plt.close()
+
 # 1. 优先加载新文件夹（确保加载的是魔改后的新版 models/attention.py）
 new_code_dir = '/root/autodl-tmp/zyk_drought_monitor/proposed_attention_optimization'
 if new_code_dir not in sys.path:
@@ -88,7 +110,7 @@ def build_model(model_type: str, device: torch.device) -> torch.nn.Module:
         attn = cfg['input_attn_params'] if model_type == 'convlstm_attn' else None
         if attn is not None:
             attn['input_dim'] = cfg['encoder_params']['input_dim']
-            print(f"👉 [DEBUG] 当前正在构建的 Attention 输入通道数被设置为: {attn['input_dim']}")
+            # print(f"当前正在构建的 Attention 输入通道数被设置为: {attn['input_dim']}")
         model = ConvLSTM(cfg['input_size'], cfg['window_in'], cfg['num_layers'], cfg['encoder_params'], attn, device)
     elif model_type == 'convgru':
         cfg = copy.deepcopy(model_params['convgru']['core'])
@@ -126,6 +148,41 @@ def normalize_rows(cm: np.ndarray) -> np.ndarray:
 
 def evaluate_checkpoint(ckpt_path: str, test_loader: DataLoader, device: torch.device):
     model, model_type = load_model_from_checkpoint(ckpt_path, device)
+    if model_type == 'convlstm_attn':
+        print(f"\n[可视化阶段] 正在提取 {model_type} 的注意力权重...")
+        with torch.no_grad():
+            # 1. 取出一个 batch 的数据
+            x_sample, _ = next(iter(test_loader))
+            x_sample = x_sample.float().to(device)
+            
+            # 2. 跑一次前向传播，触发 attention 计算
+            hidden = model.init_hidden(batch_size=x_sample.shape[0]) if hasattr(model, 'init_hidden') else None
+            _ = model(x=x_sample, hidden=hidden)
+            
+            # 3. 提取权重 (根据不同可能的挂载位置进行探测)
+            raw_weights = None
+            try:
+                raw_weights = model.input_attn.saved_attn_weights
+            except AttributeError:
+                try:
+                    raw_weights = model.encoder[0].input_attn.saved_attn_weights
+                except AttributeError:
+                    print("⚠️ 未能找到 saved_attn_weights，请确保 attention.py 已修改并被正确引入！")
+
+            if raw_weights is not None:
+                print(f"成功截获权重张量，原始形状: {raw_weights.shape}")
+                # 4. 降维：将形状 [Batch, Channels, H, W] 沿空间维度 H, W 求平均
+                # 取 batch 0，沿着 axis=(-2, -1) 求平均
+                channel_weights = np.mean(raw_weights[0], axis=(-2, -1))
+                
+                if channel_weights.shape[0] == 10:
+                    # 归一化
+                    channel_weights = channel_weights / np.sum(channel_weights)
+                    save_dir = os.path.dirname(ckpt_path)
+                    plot_channel_weights(channel_weights, save_path=os.path.join(save_dir, "attention_weights_demo.png"))
+                else:
+                    print(f"⚠️ 提取的通道数异常: {channel_weights.shape}")
+                    
     criterion = nn.CrossEntropyLoss()
     all_preds, all_targets, total_loss, total_batches = [], [], 0.0, 0
     with torch.no_grad():
@@ -213,6 +270,8 @@ def main():
     test_loader = DataLoader(TensorDataset(x_test, y_test), batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=(device.type == 'cuda'))
     results = [evaluate_checkpoint(ckpt, test_loader, device) for ckpt in args.checkpoints if os.path.exists(ckpt)]
     if not results: raise RuntimeError('没有成功评估的预测 checkpoint。')
+
+
     results = sorted(results, key=lambda x: x['macro_f1'], reverse=True)
     save_text_results(results, args.output_dir)
     plot_metric_bars(results, os.path.join(args.output_dir, 'forecast_metrics_comparison.png'))

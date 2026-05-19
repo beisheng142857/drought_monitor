@@ -13,6 +13,18 @@ VV_HIGH_THRESHOLD = -10.0
 VV_MID_THRESHOLD = -13.0
 VH_HIGH_THRESHOLD = -16.0
 VH_MID_THRESHOLD = -19.0
+CHANNEL_MAP = {
+    'NDVI': 0,
+    'EVI': 1,
+    'NDMI': 2,
+    'NDWI': 3,
+    'MSAVI': 4,
+    'VV': 5,
+    'VH': 6,
+    'VVVH': 7,
+    'VVDIFFVH': 8,
+    'RVI': 9,
+}
 
 
 def generate_threshold_labels_for_month(
@@ -21,15 +33,17 @@ def generate_threshold_labels_for_month(
 ) -> torch.Tensor:
     if x_tensor.ndim != 5:
         raise ValueError(f'X_tensor 形状应为 (Batch, Time, Channels, H, W)，当前为 {x_tensor.shape}')
-    if x_tensor.shape[2] < 3:
-        raise ValueError('当前标签构建至少需要 3 个通道：NDVI、VV、VH。')
+    required_channels = ['NDVI', 'VV', 'VH']
+    required_max_index = max(CHANNEL_MAP[channel] for channel in required_channels)
+    if x_tensor.shape[2] <= required_max_index:
+        raise ValueError(f'当前标签构建至少需要通道 {required_channels}，但 X_tensor 仅有 {x_tensor.shape[2]} 个通道。')
     if target_month_index < 0 or target_month_index >= x_tensor.shape[1]:
         raise IndexError(f'target_month_index 越界，当前时间步数为 {x_tensor.shape[1]}')
 
     target_features = x_tensor[:, target_month_index, :, :, :].cpu().numpy()
-    ndvi = target_features[:, 0, :, :]
-    vv = target_features[:, 1, :, :]
-    vh = target_features[:, 2, :, :]
+    ndvi = target_features[:, CHANNEL_MAP['NDVI'], :, :]
+    vv = target_features[:, CHANNEL_MAP['VV'], :, :]
+    vh = target_features[:, CHANNEL_MAP['VH'], :, :]
 
     valid_mask = np.isfinite(ndvi) & np.isfinite(vv) & np.isfinite(vh) & (ndvi > NDVI_VALID_THRESHOLD)
     if not np.any(valid_mask):

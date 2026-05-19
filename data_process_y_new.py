@@ -18,12 +18,19 @@ VV_MID_THRESHOLD = -13.0
 VH_HIGH_THRESHOLD = -16.0
 VH_MID_THRESHOLD = -19.0
 
+# 与 gee_downloader.py / config.py 中的默认导出顺序保持一致
+FEATURE_ORDER = [
+    'NDVI', 'EVI', 'NDMI', 'NDWI', 'MSAVI',
+    'VV', 'VH', 'VVVH', 'VVDIFFVH', 'RVI'
+]
+CHANNEL_MAP = {name: idx for idx, name in enumerate(FEATURE_ORDER)}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='构建 forecasting V2 按月份展开的时间序列 Y_tensor')
     parser.add_argument('--input_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/data_V2')
     parser.add_argument('--output_dir', type=str, default='/root/autodl-tmp/zyk_drought_monitor/data_V2')
-    parser.add_argument('--years', nargs='+', type=int, default=[2025]) #2021, 2022, 2023, 2024, 2025
+    parser.add_argument('--years', nargs='+', type=int, default=[2021, 2022, 2023, 2024, 2025]) #2021, 2022, 2023, 2024, 2025
     parser.add_argument('--input_prefix', type=str, default='sequence_X')
     parser.add_argument('--output_prefix', type=str, default='sequence_Y_threshold')
     parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans'])
@@ -32,9 +39,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def generate_threshold_labels_for_month(x_month: np.ndarray) -> np.ndarray:
-    ndvi = x_month[:, 0, :, :]
-    vv = x_month[:, 1, :, :]
-    vh = x_month[:, 2, :, :]
+    ndvi = x_month[:, CHANNEL_MAP['NDVI'], :, :]
+    vv = x_month[:, CHANNEL_MAP['VV'], :, :]
+    vh = x_month[:, CHANNEL_MAP['VH'], :, :]
 
     valid_mask = np.isfinite(ndvi) & np.isfinite(vv) & np.isfinite(vh) & (ndvi > VALID_NDVI_THRESHOLD)
     if not np.any(valid_mask):
@@ -53,9 +60,9 @@ def generate_threshold_labels_for_month(x_month: np.ndarray) -> np.ndarray:
 
 
 def generate_kmeans_labels_for_month(x_month: np.ndarray, n_clusters: int) -> np.ndarray:
-    ndvi = x_month[:, 0, :, :]
-    vv = x_month[:, 1, :, :]
-    vh = x_month[:, 2, :, :]
+    ndvi = x_month[:, CHANNEL_MAP['NDVI'], :, :]
+    vv = x_month[:, CHANNEL_MAP['VV'], :, :]
+    vh = x_month[:, CHANNEL_MAP['VH'], :, :]
 
     valid_mask = np.isfinite(ndvi) & np.isfinite(vv) & np.isfinite(vh) & (ndvi > VALID_NDVI_THRESHOLD)
     if not np.any(valid_mask):
@@ -82,8 +89,14 @@ def generate_kmeans_labels_for_month(x_month: np.ndarray, n_clusters: int) -> np
 def generate_sequence_labels(x_tensor: torch.Tensor, label_mode: str, n_clusters: int) -> torch.Tensor:
     if x_tensor.ndim != 5:
         raise ValueError(f'X_tensor 形状应为 (Batch, Time, Channels, H, W)，当前为 {x_tensor.shape}')
-    if x_tensor.shape[2] < 3:
-        raise ValueError('当前标签构建至少需要 3 个通道：NDVI、VV、VH。')
+
+    required_features = ['NDVI', 'VV', 'VH']
+    required_max_index = max(CHANNEL_MAP[name] for name in required_features)
+    if x_tensor.shape[2] <= required_max_index:
+        raise ValueError(
+            f'当前标签构建至少需要通道 {required_features}，'
+            f'按默认特征顺序应包含 {len(FEATURE_ORDER)} 个通道，当前仅有 {x_tensor.shape[2]} 个通道。'
+        )
 
     x_np = x_tensor.cpu().numpy()
     time_steps = x_np.shape[1]

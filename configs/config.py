@@ -60,12 +60,12 @@ model_params = {
     },
     "convlstm": {
         "batch_gen": {
-            # 当前拼成张量时的顺序是: 0:NDVI, 1:VV, 2:VH, 3:VVVH
-            "input_dim": [0, 1, 2, 3],  
-            "output_dim": 1,         # 输出1张分类图
-            "window_in_len": 5,      # 5个月的输入时间步
-            "window_out_len": 1,     # (不再用于Decoder，仅作为占位符)
-            "batch_size": 16,        # 128x128可以在Colab上使用较大的batch_size
+            # 当前 10 通道顺序：NDVI, EVI, NDMI, NDWI, MSAVI, VV, VH, VVVH, VVDIFFVH, RVI
+            "input_dim": list(range(10)),
+            "output_dim": 1,         # 输出 1 张分类图
+            "window_in_len": 6,      # 使用 4-9 月共 6 个时间步作为输入
+            "window_out_len": 1,     # 监测任务仅输出 1 张干旱分类图
+            "batch_size": 16,
             "shuffle": True,
             "stride": 1
         },
@@ -79,16 +79,16 @@ model_params = {
             "early_stop_tolerance": 4
         },
         "core": {
-            "input_size": (128, 128),  # ★ 直接匹配你的 100m 分辨率切片图块大小
-            "window_in": 5,            
-            "num_layers": 2,           # 建议增加为2层以提取更复杂的时空特征
+            "input_size": (128, 128),  # 直接匹配当前 100m 分辨率切片图块大小
+            "window_in": 6,
+            "num_layers": 2,
             "encoder_params": {
-                "input_dim": 4,        # ★ 4个输入通道 (NDVI, VV, VH, VVVH)
-                "hidden_dims": [64, 64], # LSTM隐藏状态通道数，最后一层决定输出前的特征维度
+                "input_dim": 10,       # 默认按 10 通道构建；训练脚本中仍可按实际通道数自适应覆盖
+                "hidden_dims": [64, 64],
                 "kernel_size": [3, 3],
                 "bias": True,
                 "peephole_con": False,
-                "num_classes": 4       # ★ 新增：输出4个干旱等级（无，轻，中，重）
+                "num_classes": 4
             },
             "input_attn_params": {
                 "input_dim": 1,        # 需与数据特征维度一致
@@ -218,49 +218,9 @@ model_params = {
     },
     "traj_gru": {
         "batch_gen": {
-            "input_dim": [0, 1, 2, 3],  # 统一为 NDVI, VV, VH, VVVH
+            "input_dim": list(range(10)),
             "output_dim": 1,
-            "window_in_len": 5,         # 5个月的输入时间步
-            "window_out_len": 1,
-            "batch_size": 16,           # 保持与ConvLSTM相同的Batch Size
-            "shuffle": True,
-            "stride": 1
-        },
-        "trainer": {
-            "num_epochs": 50,
-            "momentum": 0.7,
-            "optimizer": "adam",
-            "weight_decay": 0.00023,
-            "learning_rate": Param([0.01, 0.001, 0.0005, 0.00001]),
-            "clip": 5,
-            "early_stop_tolerance": 4
-        },
-        "core": {
-            "input_size": (128, 128),   # 匹配你的 100m 分辨率切片
-            "window_in": 5, 
-            "window_out": 1,
-            "encoder_params": {
-                "input_dim": 4,         # 4个输入通道
-                "hidden_dim": 64,       # 建议设定为64对标ConvLSTM
-                "kernel_size": 3,
-                "bias": True,
-                "connection": 1
-            },
-            "decoder_params": {
-                "input_dim": 1,
-                "hidden_dim": 64,
-                "kernel_size": 3,
-                "bias": True,
-                "connection": 1
-            },
-            "num_classes": 4            # 输出4个干旱等级（无，轻，中，重）
-        },
-    },
-    "convgru": {
-        "batch_gen": {
-            "input_dim": [0, 1, 2, 3],
-            "output_dim": 1,
-            "window_in_len": 5,
+            "window_in_len": 6,         # 使用 4-9 月共 6 个时间步
             "window_out_len": 1,
             "batch_size": 16,
             "shuffle": True,
@@ -277,10 +237,50 @@ model_params = {
         },
         "core": {
             "input_size": (128, 128),
-            "window_in": 5,
+            "window_in": 6,
+            "window_out": 1,
+            "encoder_params": {
+                "input_dim": 10,        # 默认按 10 通道构建；训练脚本中可按实际通道数覆盖
+                "hidden_dim": 64,
+                "kernel_size": 3,
+                "bias": True,
+                "connection": 1
+            },
+            "decoder_params": {
+                "input_dim": 1,
+                "hidden_dim": 64,
+                "kernel_size": 3,
+                "bias": True,
+                "connection": 1
+            },
+            "num_classes": 4            # 输出4个干旱等级（无，轻，中，重）
+        },
+    },
+    "convgru": {
+        "batch_gen": {
+            "input_dim": list(range(10)),
+            "output_dim": 1,
+            "window_in_len": 6,
+            "window_out_len": 1,
+            "batch_size": 16,
+            "shuffle": True,
+            "stride": 1
+        },
+        "trainer": {
+            "num_epochs": 50,
+            "momentum": 0.7,
+            "optimizer": "adam",
+            "weight_decay": 0.00023,
+            "learning_rate": Param([0.01, 0.001, 0.0005, 0.00001]),
+            "clip": 5,
+            "early_stop_tolerance": 4
+        },
+        "core": {
+            "input_size": (128, 128),
+            "window_in": 6,
             "num_layers": 2,
             "encoder_params": {
-                "input_dim": 4,
+                "input_dim": 10,       # 默认按 10 通道构建；训练脚本中可按实际通道数覆盖
                 "hidden_dims": [64, 64],
                 "kernel_size": [3, 3],
                 "bias": True
