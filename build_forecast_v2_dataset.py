@@ -5,6 +5,22 @@ from typing import List, Tuple
 import torch
 
 
+def resolve_tensor_path(
+    explicit_path: str | None,
+    input_dir: str | None,
+    prefix: str,
+    year: int | None,
+    tensor_name: str,
+) -> str:
+    if explicit_path:
+        return explicit_path
+    if input_dir is None or year is None:
+        raise ValueError(
+            f'{tensor_name} 未显式提供时，必须同时提供 --input_dir 和 --year 以自动定位文件。'
+        )
+    return os.path.join(input_dir, f'{prefix}_{year}.pt')
+
+
 def build_forecast_v2_samples(
     x_tensor: torch.Tensor,
     y_tensor: torch.Tensor,
@@ -46,8 +62,12 @@ def build_forecast_v2_samples(
 
 def parse_args():
     parser = argparse.ArgumentParser(description='构建 forecasting 数据集 V2（连续月序列 + 滑动窗口）')
-    parser.add_argument('--x_path', type=str, required=True)
-    parser.add_argument('--y_path', type=str, required=True)
+    parser.add_argument('--x_path', type=str, default=None)
+    parser.add_argument('--y_path', type=str, default=None)
+    parser.add_argument('--input_dir', type=str, default=None)
+    parser.add_argument('--year', type=int, default=None)
+    parser.add_argument('--x_prefix', type=str, default='sequence_X')
+    parser.add_argument('--y_prefix', type=str, default='sequence_Y_hybrid')
     parser.add_argument('--input_steps', type=int, default=4)
     parser.add_argument('--lead_steps', type=int, default=1)
     parser.add_argument('--output_x_path', type=str, required=True)
@@ -57,13 +77,16 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if not os.path.exists(args.x_path):
-        raise FileNotFoundError(f'未找到输入 X_tensor: {args.x_path}')
-    if not os.path.exists(args.y_path):
-        raise FileNotFoundError(f'未找到输入 Y_tensor: {args.y_path}')
+    x_path = resolve_tensor_path(args.x_path, args.input_dir, args.x_prefix, args.year, 'X_tensor')
+    y_path = resolve_tensor_path(args.y_path, args.input_dir, args.y_prefix, args.year, 'Y_tensor')
 
-    x_tensor = torch.load(args.x_path, map_location='cpu')
-    y_tensor = torch.load(args.y_path, map_location='cpu')
+    if not os.path.exists(x_path):
+        raise FileNotFoundError(f'未找到输入 X_tensor: {x_path}')
+    if not os.path.exists(y_path):
+        raise FileNotFoundError(f'未找到输入 Y_tensor: {y_path}')
+
+    x_tensor = torch.load(x_path, map_location='cpu')
+    y_tensor = torch.load(y_path, map_location='cpu')
     forecast_x, forecast_y = build_forecast_v2_samples(
         x_tensor=x_tensor,
         y_tensor=y_tensor,
@@ -76,6 +99,8 @@ def main():
     torch.save(forecast_x, args.output_x_path)
     torch.save(forecast_y, args.output_y_path)
 
+    print(f'输入 X 路径: {x_path}')
+    print(f'输入 Y 路径: {y_path}')
     print(f'forecast_v2_X 形状: {tuple(forecast_x.shape)}')
     print(f'forecast_v2_Y 形状: {tuple(forecast_y.shape)}')
     print(f'已保存: {args.output_x_path}')

@@ -19,8 +19,8 @@ from models.baseline.traj_gru import TrajGRU
 from proposed_attention_optimization.models.baseline.convlstm import ConvLSTM
 from proposed_attention_optimization.trainer import Trainer
 
-ACTIVE_MODEL = 'convlstm_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
-LABEL_MODE = 'threshold'  # 可选: 'kmeans' 或 'threshold'
+ACTIVE_MODEL = 'convlstm_no_attn'  # 可选: 'convlstm_attn'、'convlstm_no_attn'、'convgru'、'traj_gru'
+LABEL_MODE = 'hybrid'  # 可选: 'threshold'、'kmeans'、'hybrid'
 BATCH_SIZE = 16
 TRAIN_YEARS = [2021, 2022]
 VAL_YEAR = 2023
@@ -92,7 +92,7 @@ class YearTensorDataset(Dataset):
 
 
 class SimpleDataWrapper:
-    def __init__(self, train_loader, val_loader, test_loader=None):
+    def __init__(self, train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader | None = None):
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
@@ -138,13 +138,23 @@ def resolve_x_path(year: int) -> str:
 
 
 def resolve_y_path(year: int, label_mode: str) -> str:
-    if label_mode == 'kmeans':
+    if label_mode == 'hybrid':
         candidate_names = [
+            f'forecast_v2_Y_hybrid_{year}.pt',
+            f'sequence_Y_hybrid_{year}.pt',
+            'forecast_v2_Y_hybrid.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_Y_hybrid_{year}.pt',
+        ]
+    elif label_mode == 'kmeans':
+        candidate_names = [
+            f'forecast_v2_Y_kmeans_{year}.pt',
+            f'sequence_Y_kmeans_{year}.pt',
             f'forecast_v2_Y_{year}.pt',
             'forecast_v2_Y.pt' if year == TRAIN_YEARS[0] else f'forecast_v2_Y_{year}.pt',
         ]
     elif label_mode == 'threshold':
         candidate_names = [
+            f'forecast_v2_Y_threshold_{year}.pt',
+            f'sequence_Y_threshold_{year}.pt',
             f'forecast_v2_Y_{year}.pt',
             'forecast_v2_Y.pt',
         ]

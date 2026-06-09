@@ -52,7 +52,12 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 def resolve_paths(data_dirs: List[str], label_mode: str, year: int) -> Tuple[str, str]:
     x_path = find_existing_file(data_dirs, [f'forecast_v2_X_{year}.pt'])
-    y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt'] if label_mode == 'threshold' else [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
+    if label_mode == 'hybrid':
+        y_names = [f'forecast_v2_Y_hybrid_{year}.pt', f'sequence_Y_hybrid_{year}.pt', 'forecast_v2_Y_hybrid.pt']
+    elif label_mode == 'kmeans':
+        y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
+    else:
+        y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
     y_path = find_existing_file(data_dirs, y_names)
     return x_path, y_path
 
@@ -147,7 +152,7 @@ def extract_attention_map(model: torch.nn.Module) -> Optional[np.ndarray]:
 def predict_single(model, x_sample: torch.Tensor, device: torch.device) -> Tuple[np.ndarray, Optional[np.ndarray]]:
     with torch.no_grad():
         x = x_sample.unsqueeze(0).float().to(device)
-        hidden = model.init_hidden(batch_size=1) if hasattr(model, 'hidden') else None
+        hidden = model.init_hidden(batch_size=1) if hasattr(model, 'init_hidden') else None
         logits = model(x=x, hidden=hidden)
         pred = torch.argmax(logits, dim=1).squeeze(0).cpu().numpy()
         attn_map = extract_attention_map(model)
@@ -235,7 +240,7 @@ def plot_compare_figure(ref_map: np.ndarray, y_true: np.ndarray, y_pred: np.ndar
 
 def main():
     parser = argparse.ArgumentParser(description='生成 6.1.1 用的预测图斑-真实监测环境比对图')
-    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans'])
+    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans', 'hybrid'])
     parser.add_argument('--year', type=int, default=2025)
     parser.add_argument('--sample_index', type=int, default=0)
     parser.add_argument('--feature_time_index', type=int, default=-1)

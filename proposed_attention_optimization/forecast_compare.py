@@ -74,12 +74,13 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 
 def resolve_test_paths(data_dirs: List[str], label_mode: str, test_year: int) -> Tuple[str, str]:
-    # x_path = find_existing_file(data_dirs, [f'dataset_X_{test_year}.pt'])
-    # y_names = [f'dataset_Y_{test_year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{test_year}.pt', 'dataset_Y.pt']
-    
     x_path = find_existing_file(data_dirs, [f'forecast_v2_X_{test_year}.pt'])
-    y_names = [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt'] if label_mode == 'threshold' else [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt']
-
+    if label_mode == 'hybrid':
+        y_names = [f'forecast_v2_Y_hybrid_{test_year}.pt', f'sequence_Y_hybrid_{test_year}.pt', 'forecast_v2_Y_hybrid.pt']
+    elif label_mode == 'kmeans':
+        y_names = [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt']
+    else:
+        y_names = [f'forecast_v2_Y_{test_year}.pt', 'forecast_v2_Y.pt']
     y_path = find_existing_file(data_dirs, y_names)
     return x_path, y_path
 
@@ -188,7 +189,7 @@ def evaluate_checkpoint(ckpt_path: str, test_loader: DataLoader, device: torch.d
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.float().to(device), y.long().to(device)
-            hidden = model.init_hidden(batch_size=x.shape[0]) if hasattr(model, 'hidden') else None
+            hidden = model.init_hidden(batch_size=x.shape[0]) if hasattr(model, 'init_hidden') else None
             logits = model(x=x, hidden=hidden)
             total_loss += criterion(logits, y).item(); total_batches += 1
             all_preds.append(torch.argmax(logits, dim=1).cpu())
@@ -241,7 +242,7 @@ def save_text_results(results, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='统一评估多个旱情预测模型并生成可视化结果')
-    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans'])
+    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans', 'hybrid'])
     parser.add_argument('--test_year', type=int, default=2025)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')

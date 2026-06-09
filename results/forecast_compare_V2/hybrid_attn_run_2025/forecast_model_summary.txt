@@ -1,0 +1,19 @@
+================================================================================
+Rank 1: convlstm_attn
+Checkpoint: /root/autodl-tmp/zyk_drought_monitor/data_V2/drought_forecast_convlstm_attn_best_hybrid_proposed.pth
+Loss: 1.454137
+Accuracy: 0.461154
+Macro-F1: 0.359749
+Weighted-F1: 0.444949
+
+              precision    recall  f1-score   support
+
+          无旱     0.7792    0.2925    0.4254  60605280
+          轻旱     0.3837    0.7142    0.4992  28784152
+          中旱     0.4005    0.6868    0.5060  20520528
+        重/特旱     0.0116    0.0066    0.0084   3729464
+
+    accuracy                         0.4612 113639424
+   macro avg     0.3938    0.4250    0.3597 113639424
+weighted avg     0.5855    0.4612    0.4449 113639424
+

@@ -53,10 +53,13 @@ def find_existing_file(candidate_dirs: List[str], candidate_names: List[str]) ->
 
 
 def resolve_paths(data_dirs: List[str], label_mode: str, year: int) -> Tuple[str, str]:
-    # x_path = find_existing_file(data_dirs, [f'dataset_X_{year}.pt'])
-    # y_names = [f'dataset_Y_{year}_threshold.pt', 'dataset_Y_threshold.pt'] if label_mode == 'threshold' else [f'dataset_Y_{year}.pt', 'dataset_Y.pt']
     x_path = find_existing_file(data_dirs, [f'forecast_v2_X_{year}.pt'])
-    y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt'] if label_mode == 'threshold' else [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
+    if label_mode == 'hybrid':
+        y_names = [f'forecast_v2_Y_hybrid_{year}.pt', f'sequence_Y_hybrid_{year}.pt', 'forecast_v2_Y_hybrid.pt']
+    elif label_mode == 'kmeans':
+        y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
+    else:
+        y_names = [f'forecast_v2_Y_{year}.pt', 'forecast_v2_Y.pt']
     y_path = find_existing_file(data_dirs, y_names)
     return x_path, y_path
 
@@ -117,7 +120,7 @@ def load_model_from_checkpoint(ckpt_path: str, device: torch.device):
 def predict_single(model, x_sample: torch.Tensor, device: torch.device) -> np.ndarray:
     with torch.no_grad():
         x = x_sample.unsqueeze(0).float().to(device)
-        hidden = model.init_hidden(batch_size=1) if hasattr(model, 'hidden') else None
+        hidden = model.init_hidden(batch_size=1) if hasattr(model, 'init_hidden') else None
         logits = model(x=x, hidden=hidden)
         return torch.argmax(logits, dim=1).squeeze(0).cpu().numpy()
 
@@ -132,7 +135,7 @@ def plot_label_map(ax, label_map: np.ndarray, title: str):
 
 def main():
     parser = argparse.ArgumentParser(description='可视化同一样本在不同旱情预测模型下的空间预测图')
-    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans'])
+    parser.add_argument('--label_mode', type=str, default='threshold', choices=['threshold', 'kmeans', 'hybrid'])
     parser.add_argument('--year', type=int, default=2025)
     parser.add_argument('--sample_index', type=int, default=0)
     parser.add_argument('--feature_time_index', type=int, default=-1, help='参考底图时间步，默认输入窗口最后一个月')

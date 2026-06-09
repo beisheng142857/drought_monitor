@@ -29,8 +29,7 @@ results/*
 
 # 结果目录内仍忽略大中间产物
 results/**/frames/
-results/**/*.gif
-results/**/temp/
+
 
 # 可视化输出与业务图层结果不上传
 drought_outputs/
